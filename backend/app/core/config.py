@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     access_token_minutes: int = Field(default=60, ge=1, le=1440)
     booking_max_hours: int = Field(default=4, ge=1, le=24)
     booking_window_days: int = Field(default=7, ge=1, le=31)
+    m3_reported_timeout_hours: int = Field(default=24, ge=1, le=8760)
+    m3_assigned_timeout_hours: int = Field(default=24, ge=1, le=8760)
+    m3_repairing_timeout_hours: int = Field(default=48, ge=1, le=8760)
+    m3_acceptance_timeout_hours: int = Field(default=24, ge=1, le=8760)
+    m3_timeout_scan_interval_seconds: int = Field(default=60, ge=5, le=3600)
+    m3_timeout_scan_enabled: bool = True
 
     @field_validator("jwt_signing_key")
     @classmethod

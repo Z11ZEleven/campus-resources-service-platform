@@ -1,21 +1,29 @@
-# 公共层 D：第一次功能迭代
+# 公共层 D 与 M3 后端
 
-已实现 FastAPI + SQLAlchemy + MySQL 的公共基础，创建 **8 张 D 表**；不包含 M1/M2/M3 的业务表、审批或报修页面。
+已实现 FastAPI + SQLAlchemy + MySQL 的公共基础和 M3 文字报修闭环，现包含 **9 张 D 表、3 张 M3 表**。M3 提供上报、查询、派单、维修、完工、验收、超时升级、一次性评价及真实站内通知；对应 Vue 前端已接入。M1/M2 业务表及业务页面尚未实现。
+
+M3 接口、状态流转、权限与幂等语义见 [M3 后端](../docs/m3-backend.md)与 [超时/评价/通知扩展](../docs/m3-extensions.md)。执行 `alembic upgrade head` 会升级至 `0003_m3_extensions`，保留原公共层表与工单数据。新增 D 通知契约为本次用户确认的本地实现提案，待团队评审，不代表团队共识。
 
 ## 1. 准备与启动
 
-环境：Python 3.12、Node.js 22.12+、Docker Compose。数据库使用 MySQL 8.4。
+环境：Python 3.12、MySQL 8.4；前端另需 Node.js 22.12+。MySQL 可使用本机 Windows 服务或 Docker Compose，连接参数一致。
 
 在仓库根目录：
 
 ```powershell
+# 首次配置使用，已有 .env 时保留并编辑现有文件。
 Copy-Item .env.example .env
 ```
 
-编辑 .env，替换数据库密码、根密码、JWT_SIGNING_KEY 和 SEED_USER_PASSWORD。JWT 密钥至少 32 字符，可用下面命令生成：
+编辑 .env，填写本机数据库地址、`MYSQL_DATABASE/MYSQL_USER/MYSQL_PASSWORD`，替换 `JWT_SIGNING_KEY` 和 `SEED_USER_PASSWORD`。本机安装 MySQL 时先创建目标数据库、应用用户并授权，无需运行下列 Compose 命令；只有使用容器时才配置 `MYSQL_ROOT_PASSWORD`。JWT 密钥至少 32 字符，可生成：
 
 ```powershell
 python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+选择容器数据库时，在仓库根目录执行：
+
+```powershell
 docker compose --env-file .env -f deploy/compose.yml up -d mysql
 docker compose --env-file .env -f deploy/compose.yml ps
 ```
@@ -37,6 +45,8 @@ Linux/macOS 将 .\.venv\Scripts\python.exe 换为 .venv/bin/python，其余命�
 - 接口文档：http://127.0.0.1:8000/docs
 
 没有自动建表；必须先执行 Alembic。停止开发服务按 Ctrl+C。Compose 只提供本地 MySQL，当前没有自动部署或生产发布功能。
+
+后端默认每 60 秒自动扫描 M3 超时工单；待派单/已派单/待验收 24 小时、维修中 48 小时，严格超过截止才升级，阶段/轮次去重。配置变量、关闭方式、逐单事务、返修重新计时及站内通知边界见 [扩展配置](../docs/m3-extensions.md#4-配置与任务运行)。先迁移再启动 worker，修改配置后重启后端。
 
 ## 2. 演示账号
 
@@ -64,6 +74,11 @@ Linux/macOS 将 .\.venv\Scripts\python.exe 换为 .venv/bin/python，其余命�
 | GET | /api/v1/resources/rooms/{id} | 有权访问的教室详情 |
 | GET | /api/v1/resources/rooms/{id}/seats?has_socket=true | 座位列表，分页与插座筛选 |
 | GET | /api/v1/resources/rooms/{id}/availability?date=YYYY-MM-DD | 指定日每座位 24 小时状态 |
+| GET / POST | /api/v1/m3/work-orders | 查询/上报，十个 M3 接口详见 [M3 指南](../docs/m3-backend.md#3-http-接口) |
+| GET | /api/v1/notifications | 本人通知分页与未读数量 |
+| GET | /api/v1/notifications/unread-count | 本人未读数量 |
+| POST | /api/v1/notifications/{id}/read | 本人单条已读，重复幂等 |
+| POST | /api/v1/notifications/read-all | 仅标记调用时可见的本人未读 ID 快照 |
 
 登录示例：
 
@@ -86,6 +101,7 @@ Linux/macOS 将 .\.venv\Scripts\python.exe 换为 .venv/bin/python，其余命�
 - M3 维修限制：start_maintenance
 - 按来源释放：release_source
 - 业务操作记录：app.modules.audit.service.record_operation
+- 站内通知：app.modules.notifications.service.publish_notifications（本地公共契约提案，待团队评审）
 
 HTTP 的 Db 依赖已经开启事务，且在成功响应发出前提交。模块函数只能 flush，不能内部 commit、再次 begin 或使用另一个 Session。脚本调用才需要自行 with session.begin()。
 
@@ -107,6 +123,8 @@ $env:TEST_DATABASE_URL="mysql+pymysql://测试用户:测试密码@127.0.0.1:3306
 
 测试会迁移、清空专用测试库数据，并验证迁移回放、登录与停用、权限、真实事务和行锁、重复预约、幂等、多来源恢复、缓存失效与种子幂等。未设置测试地址时普通 pytest 会跳过 MySQL 测试；CI 使用 --require-mysql，缺少数据库不会假装通过。
 
+测试入口显式关闭自动超时 worker，防止与数据库回放、清理竞争。2026-10-21 本机完整后端 **145 passed**、Ruff 通过；包括超时、一次性评价、站内通知及并发回滚/已读快照等验证。真实浏览器、保护破坏实验和本机迁移证据见 [扩展验证记录](../docs/m3-extensions.md#6-本地验证记录2026-10-21)，不代表远端 CI 或人工验收。
+
 ## 6. 后续工作
 
-M1/M2/M3 业务表和接口、动态 RBAC、细粒度管理范围、通知、超时任务、签到违约、附件、网络集成、测试部署、生产审批和回滚均不在本 PR 中。
+M1/M2 业务表和接口、动态 RBAC、细粒度管理范围、签到违约、附件、撤销/转派/重开、完整独立业务事件流、外部邮件/微信通知、真实模块间网络集成与跨进程可靠补偿、测试部署、生产审批和发布回滚仍待后续实现。原完工请求缺少幂等轮次的限制仍保留，详见 [M3 已知限制](../docs/m3-backend.md#8-已记录的原设计限制)。

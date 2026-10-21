@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 # Test-only keys; never used by deployed app.
 os.environ.setdefault("JWT_SIGNING_KEY", "test-only-jwt-key-with-at-least-32-characters")
 os.environ.setdefault("MYSQL_PASSWORD", "test-only")
+os.environ["M3_TIMEOUT_SCAN_ENABLED"] = "false"
 
 
 def pytest_addoption(parser):

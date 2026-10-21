@@ -1,21 +1,23 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
 import { errorMessage } from '../api/request'
+import { loginDestination } from '../utils/navigation'
 
 const username = ref('')
 const password = ref('')
 const loading = ref(false)
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 async function submit() {
   if (loading.value || !username.value.trim() || !password.value) return
   loading.value = true
   try {
     await auth.login(username.value, password.value)
-    await router.replace('/resources')
+    await router.replace(loginDestination(route.query.redirect))
   } catch (error) { ElMessage.error(errorMessage(error)) }
   finally { loading.value = false }
 }

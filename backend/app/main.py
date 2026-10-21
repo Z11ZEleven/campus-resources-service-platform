@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -10,6 +11,9 @@ from app.core.config import get_settings
 from app.core.database import get_engine
 from app.core.errors import DomainError
 from app.modules.auth.router import router as auth_router
+from app.modules.m3.router import router as m3_router
+from app.modules.m3.worker import timeout_worker
+from app.modules.notifications.router import router as notification_router
 from app.modules.resources.router import router as resource_router
 
 logger = logging.getLogger(__name__)
@@ -17,13 +21,20 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app):
-    get_settings()  # fail startup on missing/unsafe configuration
-    yield
-    get_engine().dispose()
+    settings = get_settings()  # fail startup on missing/unsafe configuration
+    stop = asyncio.Event()
+    worker = asyncio.create_task(timeout_worker(stop)) if settings.m3_timeout_scan_enabled else None
+    try:
+        yield
+    finally:
+        stop.set()
+        if worker is not None:
+            await worker
+        get_engine().dispose()
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="校园资源服务平台 · 公共层 D", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="校园资源服务平台", version="0.1.0", lifespan=lifespan)
 
     @app.exception_handler(DomainError)
     async def domain_error(_request: Request, exc: DomainError):
@@ -57,6 +68,8 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(resource_router)
+    app.include_router(m3_router)
+    app.include_router(notification_router)
     return app
 
 
