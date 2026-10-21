@@ -1,6 +1,6 @@
 # M3 报修工单后端接入说明
 
-实现依据：`docs/iteration-1/第一次功能迭代-M3报修工单表设计.md` 及公共层接入约定，基线提交 `dbb7883`。本轮提供文字工单、派单、维修、完工、验收、权限与最小历史。
+基础闭环实现依据：`docs/iteration-1/第一次功能迭代-M3报修工单表设计.md` 及公共层接入约定，基线提交 `dbb7883`。现已在文字工单、派单、维修、完工、验收、权限与历史之上补齐超时升级、一次性评价与真实站内通知，具体规则、字段、接口、配置与验证见 [M3 扩展说明](m3-extensions.md)。扩展规则由本次用户确认；新增 D 通知契约为本地实现提案，待团队评审。
 
 ## 1. 数据库迁移
 
@@ -11,11 +11,11 @@ python -m alembic upgrade head
 python -m alembic current
 ```
 
-预期版本：`0002_m3_work_orders (head)`。
+预期版本：`0003_m3_extensions (head)`。
 
-新增一张 `m3_work_orders` 表；复用原有八张 D 表。主表字段与设计一致，包含五个外键、`UNIQUE(reporter_id, request_key)` 和三个查询索引。时间为 UTC `DATETIME(3)`，ID 为 `BIGINT UNSIGNED`。本迁移不重建公共层表或种子用户。
+`0002_m3_work_orders` 新增基础工单主表并复用原有八张 D 表；`0003_m3_extensions` 为主表追加阶段起点、升级次数与查询索引，新增 `m3_work_order_ratings`、`m3_work_order_escalations`、`d_notifications`。时间为 UTC `DATETIME(3)`，ID 为 `BIGINT UNSIGNED`，JSON ID 为字符串。旧工单阶段起点用原 `updated_at` 回填；迁移不重建公共层表或种子用户。
 
-回滚到 `0001_public_layer` 会删除 M3 主表及其中工单数据；应先完成所需备份和业务处置。历史操作表仍属于公共层，迁移回滚不会自动删除其中日志。
+回退至 `0002_m3_work_orders` 会丢失评价、升级、D 通知及新增阶段字段，基础工单保留；继续回滚到 `0001_public_layer` 会删除 M3 主表及工单数据。应先完成备份和业务处置；公共操作日志不会随工单自动删除。
 
 ## 2. 权限和可见范围
 
@@ -26,6 +26,8 @@ python -m alembic current
 | 开始、提交完工 | 当前有 REPAIRER 权限，且确为本单 assignee_id |
 | 验收通过、驳回 | PROPERTY_ADMIN；不得验收本人负责维修的工单 |
 | 查询 | 本人上报的工单；REPAIRER 被分配的工单；PROPERTY_ADMIN 可看全部测试工单 |
+| 评价 | 仅本单原报修人，且状态 COMPLETED；同内容重试幂等，不同内容 409 |
+| 手动补扫超时 | PROPERTY_ADMIN；扫描全局候选，不能由客户端指定任意时间 |
 
 多角色查询取上述范围的并集。SYS_ADMIN 不隐式获得 M3 管理权限。不可查看的详情返回 404；用户、身份、角色每次请求均由公共层重新加载。
 
@@ -39,11 +41,16 @@ python -m alembic current
 |---|---|---|
 | POST | 空 | 201，工单 |
 | GET | 空 | 200，分页列表 |
-| GET | `/{id}` | 200，工单及 history |
+| GET | `/{id}` | 200，工单及 history/rating/escalations/timeout |
 | POST | `/{id}/assign` | 200，工单 |
 | POST | `/{id}/start` | 200，工单 |
 | POST | `/{id}/submit-completion` | 200，工单 |
 | POST | `/{id}/acceptance` | 200，工单 |
+| POST | `/{id}/rating` | 201，一次性评价 |
+| GET | `/timeout-policy` | 200，当前时限与自动扫描配置 |
+| POST | `/scan-timeouts` | 200，checked/escalated，物业管理员补扫 |
+
+新增接口请求、输出及 `/api/v1/notifications` 四个公共接口详见 [扩展 API](m3-extensions.md#3-http-接口)。
 
 ### 3.1 创建
 
@@ -78,11 +85,11 @@ python -m alembic current
 }
 ```
 
-工单响应包含设计主表所有字段，包括分配、维修、验收人员 ID 和时间、最近完工说明、最近验收意见、当前 `completion_round` 和原 `request_key`。
+工单响应包含设计主表所有字段，包括分配、维修、验收人员 ID 和时间、最近完工说明、最近验收意见、当前 `completion_round`、原 `request_key`、当前阶段 `stage_started_at` 和累计 `escalation_count`。
 
-详情额外包含 `history` 数组，字段为 `id/module/business_id/action/actor_id/from_status/to_status/note/created_at`。先授权工单，后读取 `d_operation_logs`。每次完工、验收均追加历史，主表的最新说明不会覆盖过去的日志。
+详情额外包含 `history` 数组，字段为 `id/module/business_id/action/actor_id/from_status/to_status/note/created_at`，以及 `rating`、`escalations`、`timeout`。先授权工单，后读取扩展及历史。每次完工、验收、首次评价均追加历史，主表的最新说明不会覆盖过去的日志；升级记录存入独立升级表，自动升级不冒用人工操作人。
 
-M3 状态事件为 `CREATE_WORK_ORDER`、`ASSIGN_WORK_ORDER`、`START_REPAIR`、`SUBMIT_COMPLETION`、`ACCEPT_WORK_ORDER`、`REJECT_WORK_ORDER`；公共资源层还记录获得/释放来源。完工及验收日志 `note` 是 JSON 文本，包含批次与当次说明。
+M3 操作事件为 `CREATE_WORK_ORDER`、`ASSIGN_WORK_ORDER`、`START_REPAIR`、`SUBMIT_COMPLETION`、`ACCEPT_WORK_ORDER`、`REJECT_WORK_ORDER`、`RATE_WORK_ORDER`；公共资源层还记录获得/释放来源。完工、验收、评价日志 `note` 是 JSON 文本，保存当次提交内容。
 
 ### 3.3 派单
 
@@ -136,7 +143,7 @@ M3 状态事件为 `CREATE_WORK_ORDER`、`ASSIGN_WORK_ORDER`、`START_REPAIR`、
 
 ## 4. 事务、并发和资源联动
 
-所有写操作使用公共 `Db` 开启的单请求事务，只 flush，按房间锁 → 工单锁的顺序执行。首次开始、验收通过中的业务状态、来源、资源版本和操作日志共同提交或回滚。
+工单写操作使用公共 `Db` 开启的单请求事务，只 flush，按房间锁 → 工单锁的顺序执行。首次开始、验收通过中的业务状态、来源、资源版本、操作日志和通知共同提交或回滚。超时扫描是逐单事务的后台编排（手动补扫复用同一编排），每单获得房间和工单锁后复查阶段；其独立 Session 不作为普通工单 HTTP 写操作的事务模板。
 
 - 通过公共 `start_maintenance`、`release_source` 修改来源，M3 不直接更新公共来源或汇总表。
 - 多张工单可以限制同一教室；一张验收通过只撤销自己的来源。
@@ -168,7 +175,7 @@ python -m ruff check app scripts tests alembic
 
 真实 MySQL 测试必须显式设置专用 `TEST_DATABASE_URL`，库名须以 `_test` 结尾；测试会清理测试数据并验证迁移回放，不能指向开发业务库。M3 测试覆盖状态、权限、幂等、多来源、旧批次、并发和故障回滚；迁移测试验证回滚 M3 后 D 表与已有用户数据仍然存在。
 
-### 本次本地验证（2026-10-21）
+### 基础闭环本地验证（2026-10-21，当时范围）
 
 - Python 3.12.15、MySQL 8.4.13；独立测试库 `campus_resources_m3_test`。
 - 后端完整测试 **104 passed**，含 M3 API 30 个案例、M3 输入输出 schema 50 个案例，以及公共层和迁移测试。
@@ -181,9 +188,13 @@ python -m ruff check app scripts tests alembic
 
 这些是本地验证结果，不作为远端 CI 或人工验收结果。
 
+### 超时、评价与通知扩展验证（2026-10-21）
+
+后端完整测试 **145 passed**、Ruff 通过。评价归属保护经历故意移除后失败、原样恢复后通过；通知全部已读覆盖真实延迟提交竞态。独立测试库的真实浏览器与自动 worker 验证、前端异步问题修复见 [扩展验证记录](m3-extensions.md#6-本地验证记录2026-10-21)。本机开发库已升级 `0003_m3_extensions`，原九张表每个原字段的内容哈希与升级前一致，保留账号密码及业务数据；`alembic check` 通过，后端 8001 已重启并启用每 60 秒自动扫描。
+
 ## 7. 后续范围
 
-超时升级、评价、通知、附件、细粒度管理范围、独立事件表、撤销、转派、完成后重开及跨进程可靠补偿仍按设计留待后续。当前实现不能视作课程完整 M3 需求已经全部完成。
+超时升级、评价、站内通知已实现。附件、细粒度管理范围、完整独立业务事件流、撤销、转派、完成后重开、外部邮件/微信通道及跨进程可靠补偿仍待后续；真实模块间业务网络调用尚未补齐。当前实现不能视作课程完整 M3 需求已经全部完成，新增公共 D 通知契约仍待团队评审。
 
 ## 8. 已记录的原设计限制
 
