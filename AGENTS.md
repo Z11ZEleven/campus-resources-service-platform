@@ -1,5 +1,14 @@
 # AI 编程代理规则
 
+## 第一次迭代实施约定
+
+- 当前代码采用 MySQL 8.4、同步 SQLAlchemy 2.0 Session；优先阅读 docs/iteration-1/、backend/README.md 和 docs/public-layer-integration.md。
+- HTTP 的 Db 依赖统一开启事务并在响应前提交；模块服务只 flush，不再次 begin 或独立 commit。
+- 同一资源变更按房间行锁 → 业务单锁的顺序执行；统一调用 resources/service.py，不直接修改资源来源或汇总。
+- ID 在 JSON 中序列化为字符串；DATETIME(3) 存 UTC；学校时间按 Asia/Shanghai 解释。
+- 各组只追加自己的业务模型和迁移；D 不读写 M1/M2/M3 私有业务表。
+- MySQL 集成测试必须使用显式配置的 *_test 数据库，禁止对业务库执行清理或回放。
+
 本文件适用于整个仓库。下级目录若增加规则，应同时满足本文件。
 
 ## 开发方式

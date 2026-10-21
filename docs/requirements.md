@@ -1,5 +1,18 @@
 # 需求草案与追踪表
 
+## 第一次迭代公共层实现追踪
+
+| 需求 | 本次实现证据 | 剩余范围 |
+|---|---|---|
+| D-001 | backend/app/modules/auth、tests/test_auth.py | 动态 RBAC、细粒度管理范围 |
+| D-002 | backend/app/modules/resources、MySQL 迁移、seed | 完整资源管理页面与特殊开放规则 |
+| D-004 | backend/app/modules/audit、公共日志表 | 完整安全审计与保留策略 |
+| INT-001/002 | 公共资源函数及 tests/test_resources.py | 各模块真实业务接入、网络集成 |
+| ENG-001 | .github/workflows/public-layer.yml | 仓库强制门禁与自动部署 |
+| ENG-002 | Alembic 迁移、迁移回放测试、幂等 seed 测试 | 后续业务表迁移与实际部署集成 |
+
+以上均为首次迭代部分实现，不改变下列最终需求清单；运行与接入见 [指南](public-layer-integration.md)。
+
 状态：根据课程任务书整理的启动草案，尚未由全组评审成为需求基线。以下是需求集合，每项在开发前继续拆分为可独立验收的子需求。实现、验证链接和负责人均尚未填写，不表示已经完成。
 
 ## M1

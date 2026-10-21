@@ -6,7 +6,9 @@
 
 ## 当前状态
 
-项目启动阶段。本次初始化提供协作规则、需求草案和目录说明，尚无可运行的业务代码、自动测试或部署流水线。未完成内容在文档中保留为待办，不作为已交付功能。
+第一次功能迭代：已加入公共层 D 的 MySQL 后端、迁移与种子数据、认证与资源 API、模块接入函数、最小 Vue 示例和 CI 检查配置。M1/M2/M3 业务功能、自动部署和生产发布尚未实现。
+
+开始运行请看 [后端启动说明](backend/README.md)、[公共前端](frontend/README.md) 和 [模块接入指南](docs/public-layer-integration.md)。
 
 ## 业务模块
 
@@ -22,16 +24,17 @@
 ## 技术方向
 
 - 团队倾向后端使用 Python。
-- 候选方案：Vue 3 + TypeScript；FastAPI + SQLAlchemy + Alembic；PostgreSQL；Docker Compose。
+- 首次迭代实施方案：Vue 3 + TypeScript；FastAPI + SQLAlchemy + Alembic；**MySQL 8.4**；Docker Compose。
 - 上述框架、版本及部署拓扑尚待团队评审，见 [架构草案](docs/architecture.md) 和 [技术选型记录](docs/decisions/0001-technology-stack.md)。
 
 ## 目录导航
 
 | 路径 | 内容 |
 | --- | --- |
-| frontend/ | 前端目录说明，待建立实际工程 |
-| backend/ | 后端目录说明，待建立实际工程 |
-| deploy/ | 环境与部署规划，待加入可执行配置 |
+| frontend/ | 公共登录、布局与资源查询 Vue 示例 |
+| backend/ | 公共层 FastAPI、MySQL 迁移、初始化和测试 |
+| deploy/ | 本地 MySQL Compose；自动部署待实现 |
+| docs/public-layer-integration.md | 各模块调用公共层的接口与事务约定 |
 | docs/requirements.md | 需求草案、追踪表及待定规则 |
 | docs/team.md | 分工与公共层责任表 |
 | docs/first-review.md | 第一次讨论课准备清单 |
@@ -55,7 +58,7 @@
 4. 认领 Issue，从最新 main 创建短期任务分支。
 5. 在 PR 中说明实现、验证结果和已知问题，请另一位成员评审。
 
-工程初始化完成后，必须在这里补齐实际环境版本、依赖安装、配置、启动、迁移、种子数据和测试命令。目前没有这些命令，不能按本 README 启动业务系统。
+环境、启动、迁移、种子及测试命令见 backend/README.md；前端命令见 frontend/README.md。历史完整设计中的 PostgreSQL 内容不作为首次迭代实施规范。
 
 ## 第一轮工程目标
 
