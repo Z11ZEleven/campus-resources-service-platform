@@ -15,7 +15,8 @@ def test_schema_matches_models_and_empty_database_replay(factory, mysql_engine):
         "d_resource_blocks", "d_seat_status_summary", "d_operation_logs",
     }
     assert set(inspect(mysql_engine).get_table_names()) == expected_public | {
-        "m3_work_orders", "alembic_version"
+        "m3_work_orders", "m3_work_order_ratings", "m3_work_order_escalations",
+        "d_notifications", "alembic_version"
     }
     with mysql_engine.begin() as connection:
         connection.execute(text(
@@ -34,7 +35,7 @@ def test_schema_matches_models_and_empty_database_replay(factory, mysql_engine):
     command.upgrade(cfg, "head")
     assert (
         len([name for name in inspect(mysql_engine).get_table_names() if name.startswith("d_")])
-        == 8
+        == 9
     )
     assert "m3_work_orders" in inspect(mysql_engine).get_table_names()
     command.check(cfg)
@@ -64,13 +65,15 @@ def test_m3_schema_has_unsigned_keys_foreign_keys_and_idempotency_constraint(mys
         "id", "created_at", "reporter_id", "room_id", "title", "description", "category",
         "status", "assignee_id", "assigned_by", "assigned_at", "started_at", "completion_note",
         "submitted_at", "completion_round", "accepted_by", "accepted_at", "acceptance_comment",
-        "request_key", "updated_at",
+        "request_key", "updated_at", "stage_started_at", "escalation_count",
     }
     assert set(columns) == required
     for name in ("id", "reporter_id", "room_id", "assignee_id", "assigned_by", "accepted_by"):
         assert isinstance(columns[name]["type"], BIGINT) and columns[name]["type"].unsigned
     assert isinstance(columns["completion_round"]["type"], INTEGER)
     assert columns["completion_round"]["type"].unsigned
+    assert isinstance(columns["escalation_count"]["type"], INTEGER)
+    assert columns["escalation_count"]["type"].unsigned
     assert columns["title"]["type"].length == 100
     assert columns["acceptance_comment"]["type"].length == 500
     assert columns["request_key"]["type"].length == 36
@@ -91,3 +94,33 @@ def test_m3_schema_has_unsigned_keys_foreign_keys_and_idempotency_constraint(mys
         (("assigned_by",), "d_users", ("id",)),
         (("accepted_by",), "d_users", ("id",)),
     }
+
+
+def test_extension_upgrade_preserves_existing_users_orders_and_phase_clock(client, data, mysql_engine):
+    from uuid import uuid4
+
+    from conftest import token_headers
+
+    response = client.post("/api/v1/m3/work-orders", headers=token_headers(data["users"]["student"]), json={
+        "room_id": str(data["room"]), "title": "迁移前已存在的故障", "description": "保留原工单和用户数据",
+        "category": "OTHER", "request_key": str(uuid4()),
+    })
+    assert response.status_code == 201
+    order_id = int(response.json()["id"])
+    with mysql_engine.connect() as connection:
+        previous = connection.execute(text("SELECT title,updated_at,request_key FROM m3_work_orders WHERE id=:id"), {"id": order_id}).one()
+        users = connection.execute(text("SELECT id,username,password_hash FROM d_users ORDER BY id")).all()
+    cfg = Config("alembic.ini")
+    command.downgrade(cfg, "0002_m3_work_orders")
+    with mysql_engine.connect() as connection:
+        assert connection.scalar(text("SELECT title FROM m3_work_orders WHERE id=:id"), {"id": order_id}) == previous.title
+        assert connection.execute(text("SELECT id,username,password_hash FROM d_users ORDER BY id")).all() == users
+    command.upgrade(cfg, "head")
+    with mysql_engine.connect() as connection:
+        migrated = connection.execute(text("SELECT title,stage_started_at,escalation_count,request_key FROM m3_work_orders WHERE id=:id"), {"id": order_id}).one()
+        assert migrated.title == previous.title
+        assert migrated.stage_started_at == previous.updated_at
+        assert migrated.escalation_count == 0
+        assert migrated.request_key == previous.request_key
+        assert connection.execute(text("SELECT id,username,password_hash FROM d_users ORDER BY id")).all() == users
+    command.check(cfg)

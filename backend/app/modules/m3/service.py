@@ -9,9 +9,17 @@ from app.core.database import require_transaction
 from app.core.errors import DomainError, conflict, forbidden, not_found
 from app.core.time import utcnow
 from app.modules.audit.service import list_operations, record_operation
+from app.modules.auth.models import User, UserIdentity, UserRole
 from app.modules.auth.permissions import Principal, load_principal
-from app.modules.m3.models import WorkOrder
-from app.modules.m3.schemas import Acceptance, AssignWorkOrder, CreateWorkOrder, SubmitCompletion
+from app.modules.m3.models import WorkOrder, WorkOrderEscalation, WorkOrderRating
+from app.modules.m3.schemas import (
+    Acceptance,
+    AssignWorkOrder,
+    CreateWorkOrder,
+    SubmitCompletion,
+    SubmitRating,
+)
+from app.modules.notifications.service import publish_notifications
 from app.modules.resources.service import (
     check_room_access,
     lock_room,
@@ -56,9 +64,52 @@ def _locked_order(session: Session, order_id: int) -> WorkOrder:
     return order
 
 
+def property_admin_ids(session: Session) -> list[int]:
+    """Resolve current valid administrators through the public identity models."""
+    return list(session.scalars(
+        select(User.id)
+        .join(UserIdentity, UserIdentity.user_id == User.id)
+        .join(UserRole, UserRole.user_id == User.id)
+        .where(
+            User.is_active.is_(True), UserIdentity.is_active.is_(True),
+            UserRole.role_code == "PROPERTY_ADMIN",
+        )
+        .distinct()
+    ))
+
+
+def _notify_event(session: Session, order: WorkOrder, action: str):
+    recipients = set(property_admin_ids(session)) | {order.reporter_id}
+    if order.assignee_id is not None:
+        recipients.add(order.assignee_id)
+    labels = {
+        "CREATE_WORK_ORDER": "已上报",
+        "ASSIGN_WORK_ORDER": "已派单",
+        "START_REPAIR": "开始维修",
+        "SUBMIT_COMPLETION": "待验收",
+        "ACCEPT_WORK_ORDER": "验收通过",
+        "REJECT_WORK_ORDER": "已驳回返修",
+        "RATE_WORK_ORDER": "已评价",
+    }
+    label = labels[action]
+    publish_notifications(
+        session,
+        recipients=recipients,
+        source_module="M3",
+        business_id=order.id,
+        event_key=f"{order.id}:{action}:{order.completion_round}",
+        title=f"报修工单{label}",
+        content=f"工单「{order.title}」{label}，请查看工单详情。",
+        link=f"/m3/work-orders/{order.id}",
+    )
+
+
 def _transition(session, order, actor, action, status, *, note=None):
     previous = order.status
+    if previous == status:
+        return order
     order.status = status
+    order.stage_started_at = utcnow()
     session.flush()
     record_operation(
         session,
@@ -70,6 +121,7 @@ def _transition(session, order, actor, action, status, *, note=None):
         to_status=status,
         note=json.dumps(note, ensure_ascii=False) if note is not None else None,
     )
+    _notify_event(session, order, action)
     return order
 
 
@@ -113,6 +165,7 @@ def create_work_order(session: Session, *, body: CreateWorkOrder, actor: Princip
         actor_id=actor.user_id,
         to_status="REPORTED",
     )
+    _notify_event(session, order, "CREATE_WORK_ORDER")
     return order
 
 
@@ -153,6 +206,54 @@ def work_order_detail(session: Session, *, order_id: int, actor: Principal):
         raise not_found()
     history = list_operations(session, module="M3", business_id=order.id)
     return order, history
+
+
+def work_order_extensions(session: Session, order: WorkOrder):
+    from app.modules.m3.timeouts import timeout_info
+
+    rating = session.scalar(
+        select(WorkOrderRating).where(WorkOrderRating.work_order_id == order.id)
+    )
+    escalations = list(session.scalars(
+        select(WorkOrderEscalation)
+        .where(WorkOrderEscalation.work_order_id == order.id)
+        .order_by(WorkOrderEscalation.escalated_at, WorkOrderEscalation.id)
+    ))
+    return rating, escalations, timeout_info(session, order)
+
+
+def submit_rating(
+    session: Session, *, order_id: int, body: SubmitRating, actor: Principal
+) -> WorkOrderRating:
+    order = _locked_order(session, order_id)
+    if not _can_read(actor, order):
+        raise not_found()
+    if order.reporter_id != actor.user_id:
+        raise forbidden()
+    if order.status != "COMPLETED":
+        raise conflict("只有验收完成的工单可以评价")
+    existing = session.scalar(
+        select(WorkOrderRating).where(WorkOrderRating.work_order_id == order.id)
+        .with_for_update().execution_options(populate_existing=True)
+    )
+    if existing is not None:
+        if (existing.score, existing.comment) != (body.score, body.comment):
+            raise conflict("评价提交后不能修改")
+        return existing
+    rating = WorkOrderRating(
+        work_order_id=order.id, reporter_id=actor.user_id,
+        score=body.score, comment=body.comment,
+    )
+    session.add(rating)
+    session.flush()
+    record_operation(
+        session, module="M3", business_id=order.id,
+        action="RATE_WORK_ORDER", actor_id=actor.user_id,
+        from_status=order.status, to_status=order.status,
+        note=json.dumps({"score": body.score, "comment": body.comment}, ensure_ascii=False),
+    )
+    _notify_event(session, order, "RATE_WORK_ORDER")
+    return rating
 
 
 def assign_work_order(

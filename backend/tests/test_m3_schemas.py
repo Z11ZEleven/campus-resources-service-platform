@@ -108,6 +108,7 @@ def work_order_data():
         "submitted_at": now, "completion_round": 1, "accepted_by": None,
         "accepted_at": None, "acceptance_comment": None,
         "request_key": str(uuid4()), "updated_at": now,
+        "stage_started_at": now, "escalation_count": 1,
     }
 
 
@@ -119,6 +120,19 @@ def test_detail_serializes_all_ids_and_history_times_without_precision_loss():
         "from_status": "REPAIRING", "to_status": "WAIT_ACCEPTANCE",
         "note": "已更换控制器", "created_at": values["created_at"],
     }]
+    values["rating"] = {
+        "id": 9007199254740996, "work_order_id": values["id"], "reporter_id": 1,
+        "score": 5, "comment": "处理及时", "created_at": values["created_at"],
+    }
+    values["escalations"] = [{
+        "id": 9007199254740997, "work_order_id": values["id"], "stage": "REPAIRING",
+        "completion_round": 0, "stage_started_at": values["created_at"],
+        "due_at": values["created_at"], "escalated_at": values["created_at"],
+        "reason": "维修阶段超时", "triggered_by": 9007199254740998,
+    }]
+    values["timeout"] = {
+        "due_at": values["created_at"], "is_overdue": True, "current_stage_escalated": False,
+    }
     body = schema("WorkOrderDetail")(**values).model_dump(mode="json")
     for field in ("id", "reporter_id", "room_id", "assignee_id", "assigned_by"):
         assert body[field] == str(values[field])
@@ -129,6 +143,19 @@ def test_detail_serializes_all_ids_and_history_times_without_precision_loss():
     assert body["history"][0]["id"] == "9007199254740995"
     assert body["history"][0]["actor_id"] == "3"
     assert body["history"][0]["created_at"].endswith("Z")
+    assert body["stage_started_at"] == body["created_at"]
+    assert body["escalation_count"] == 1
+    assert body["rating"]["id"] == "9007199254740996"
+    assert body["rating"]["work_order_id"] == str(values["id"])
+    assert body["rating"]["reporter_id"] == "1"
+    assert body["rating"]["created_at"].endswith("Z")
+    escalation = body["escalations"][0]
+    assert escalation["id"] == "9007199254740997"
+    assert escalation["work_order_id"] == str(values["id"])
+    assert escalation["triggered_by"] == "9007199254740998"
+    for field in ("stage_started_at", "due_at", "escalated_at"):
+        assert escalation[field].endswith("Z")
+    assert body["timeout"]["due_at"].endswith("Z")
 
 
 def test_work_order_page_retains_pagination_and_uses_view_serialization():

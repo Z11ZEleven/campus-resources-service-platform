@@ -49,6 +49,58 @@ class Acceptance(Input):
         return self
 
 
+class SubmitRating(Input):
+    score: int = Field(strict=True, ge=1, le=5)
+    comment: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def normalize_empty_comment(self) -> Self:
+        if self.comment == "":
+            self.comment = None
+        return self
+
+
+class RatingView(Output):
+    id: Id
+    work_order_id: Id
+    reporter_id: Id
+    score: int
+    comment: str | None
+    created_at: UtcDateTime
+
+
+class EscalationView(Output):
+    id: Id
+    work_order_id: Id
+    stage: WorkOrderStatus
+    completion_round: int
+    stage_started_at: UtcDateTime
+    due_at: UtcDateTime
+    escalated_at: UtcDateTime
+    reason: str
+    triggered_by: Id | None
+
+
+class TimeoutInfo(Output):
+    due_at: UtcDateTime | None
+    is_overdue: bool
+    current_stage_escalated: bool
+
+
+class TimeoutPolicy(Output):
+    reported_hours: int
+    assigned_hours: int
+    repairing_hours: int
+    acceptance_hours: int
+    scan_interval_seconds: int
+    automatic_scan_enabled: bool
+
+
+class TimeoutScanResult(Output):
+    checked: int
+    escalated: int
+
+
 class OperationView(Output):
     id: Id
     module: str
@@ -82,10 +134,15 @@ class WorkOrderView(Output):
     acceptance_comment: str | None
     request_key: UUID
     updated_at: UtcDateTime
+    stage_started_at: UtcDateTime
+    escalation_count: int
 
 
 class WorkOrderDetail(WorkOrderView):
     history: list[OperationView]
+    rating: RatingView | None
+    escalations: list[EscalationView]
+    timeout: TimeoutInfo
 
 
 class WorkOrderPage(Output):
