@@ -90,7 +90,7 @@ Linux/macOS 将 .\.venv\Scripts\python.exe 换为 .venv/bin/python，其余命�
 
 ## 4. 各模块如何接入
 
-先阅读 [公共层接入指南](../docs/public-layer-integration.md)。入口：
+先阅读 [数据库统一契约](../docs/database-contract.md) 和 [公共层接入指南](../docs/public-layer-integration.md)。入口：
 
 - 数据库依赖：app.modules.auth.dependencies.Db
 - 登录依赖：app.modules.auth.dependencies.CurrentUser
