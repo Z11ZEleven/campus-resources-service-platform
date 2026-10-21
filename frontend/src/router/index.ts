@@ -6,7 +6,6 @@ export const router = createRouter({
   routes: [
     { path: '/login', component: () => import('../views/LoginView.vue') },
     { path: '/resources', component: () => import('../views/ResourcesView.vue') },
-    { path: '/m2/applications', component: () => import('../views/M2ApplicationsView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/resources' },
   ],
 })
