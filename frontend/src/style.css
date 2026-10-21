@@ -1,0 +1,28 @@
+* { box-sizing: border-box; }
+body { margin: 0; background: #f5f7fa; color: #1f2937; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+.topbar { background: white; border-bottom: 1px solid #e5e7eb; padding: 20px 5%; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.user-info { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+main { max-width: 1400px; margin: 0 auto; padding: 40px 28px; }
+h1 { font-size: 28px; margin: 8px 0 16px; }
+.eyebrow { color: #2563eb; font-size: 11px; letter-spacing: 2px; font-weight: 700; }
+.muted { color: #64748b; }
+.small { font-size: 12px; line-height: 1.8; }
+.login-card { background: white; max-width: 460px; padding: 36px; margin: 40px auto; border: 1px solid #e2e8f0; border-radius: 12px; }
+label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+form { display: grid; gap: 20px; margin: 28px 0; }
+input { border: 1px solid #cbd5e1; border-radius: 4px; padding: 10px; min-height: 36px; background: white; color: #1f2937; font: inherit; }
+input:focus { outline: 2px solid #93c5fd; }
+.full-width { width: 100%; }
+.filters { display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; margin: 28px 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.table-wrap { overflow-x: auto; background: white; border: 1px solid #e2e8f0; border-radius: 8px; min-height: 150px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+th, td { padding: 16px 10px; border-bottom: 1px solid #f1f5f9; text-align: center; }
+thead { background: #f8fafc; }
+.state { display: inline-block; padding: 4px 7px; border-radius: 4px; font-size: 11px; background: #f1f5f9; color: #64748b; }
+.AVAILABLE { background: #dcfce7; color: #166534; }
+.RESERVED { background: #dbeafe; color: #1d4ed8; }
+.ROOM_BOOKED { background: #ede9fe; color: #6d28d9; }
+.MAINTENANCE { background: #ffedd5; color: #9a3412; }
+.DISABLED { background: #fee2e2; color: #991b1b; }
+@media (max-width: 600px) { main { padding: 24px 16px; } .topbar { flex-wrap: wrap; } .login-card { padding: 24px; } }
