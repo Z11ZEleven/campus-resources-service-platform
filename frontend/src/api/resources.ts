@@ -31,9 +31,10 @@ export interface Slot {
   bookable: boolean
 }
 export interface Availability { room_id: string; date: string; seats: Seat[]; slots: Slot[] }
-export async function rooms() {
+export async function rooms(page = 1, pageSize = 100, signal?: AbortSignal) {
   return (await request.get<{ items: Room[]; total: number }>('/resources/rooms', {
-    params: { page: 1, page_size: 100 },
+    params: { page, page_size: pageSize },
+    signal,
   })).data
 }
 export async function availability(roomId: string, date: string) {
