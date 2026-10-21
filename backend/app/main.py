@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.core.database import get_engine
 from app.core.errors import DomainError
 from app.modules.auth.router import router as auth_router
+from app.modules.m2.router import router as m2_router
 from app.modules.resources.router import router as resource_router
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(resource_router)
+    app.include_router(m2_router)
     return app
 
 
