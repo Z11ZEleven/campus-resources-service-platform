@@ -37,6 +37,7 @@ M3 的接口、权限、状态与测试见 [M3 后端接入说明](docs/m3-backe
 | backend/ | 公共层 FastAPI、MySQL 迁移、初始化和测试 |
 | deploy/ | 本地 MySQL Compose；自动部署待实现 |
 | docs/public-layer-integration.md | 各模块调用公共层的接口与事务约定 |
+| docs/database-contract.md | D、M1、M2、M3 统一数据库字段与变更流程 |
 | docs/requirements.md | 需求草案、追踪表及待定规则 |
 | docs/team.md | 分工与公共层责任表 |
 | docs/first-review.md | 第一次讨论课准备清单 |
