@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.core.database import get_engine
 from app.core.errors import DomainError
 from app.modules.auth.router import router as auth_router
+from app.modules.m2.router import router as m2_router
 from app.modules.m3.router import router as m3_router
 from app.modules.m3.worker import timeout_worker
 from app.modules.notifications.router import router as notification_router
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(resource_router)
+    app.include_router(m2_router)
     app.include_router(m3_router)
     app.include_router(notification_router)
     return app
