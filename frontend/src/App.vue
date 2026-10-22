@@ -26,6 +26,8 @@ onUnmounted(() => { window.removeEventListener('auth-expired', sessionExpired); 
       <router-link class="brand" :to="auth.user ? '/resources' : '/login'"><span class="brand-mark" aria-hidden="true">校</span><strong>校园资源</strong></router-link>
       <nav v-if="auth.user" class="primary-nav" aria-label="主导航">
         <router-link to="/resources">空间资源</router-link>
+        <router-link to="/m2/applications">整室申请</router-link>
+        <router-link v-if="auth.user.roles.some(role => ['DEPT_ADMIN','CAMPUS_ADMIN','ROOM_ADMIN'].includes(role))" to="/m2/approval-tasks">审批待办</router-link>
         <router-link to="/m3/work-orders">报修工单</router-link>
         <router-link to="/notifications" :aria-label="notificationLabel" :title="notificationLabel">
           通知中心<span v-if="notifications.unreadCount > 0" class="notification-badge" aria-hidden="true">{{ notifications.unreadCount > 99 ? '99+' : notifications.unreadCount }}</span>
@@ -45,7 +47,8 @@ onUnmounted(() => { window.removeEventListener('auth-expired', sessionExpired); 
 .notification-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; background: #eaf1ff; color: #2563eb; font-size: 10px; font-weight: 650; }
 .notification-warning { margin-left: 5px; color: #a56d1e; font-size: 11px; }
 .primary-nav a { white-space: nowrap; }
-@media (min-width: 601px) and (max-width: 940px) {
+.primary-nav { overflow-x: auto; }
+@media (min-width: 601px) and (max-width: 1200px) {
   .topbar { flex-wrap: wrap; padding-top: 16px; padding-bottom: 12px; gap: 16px; }
   .primary-nav { order: 3; width: 100%; min-height: 32px; }
 }

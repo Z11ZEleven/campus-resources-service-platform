@@ -184,7 +184,7 @@ onBeforeUnmount(() => { alive = false; epoch++; listSequence++; listController?.
       <div>
         <p class="section-kicker">校园服务 / 消息</p>
         <h1>通知中心</h1>
-        <p class="page-description">查看报修进度与超时提醒，继续处理相关工单。</p>
+        <p class="page-description">查看申请审批、报修进度与超时提醒，继续处理相关业务。</p>
       </div>
       <el-button type="primary" plain :loading="markingAll" :disabled="loading || busy || !notifications.unreadCount" @click="readAll">全部标记为已读</el-button>
     </header>

@@ -7,6 +7,9 @@ export const router = createRouter({
   routes: [
     { path: '/login', component: () => import('../views/LoginView.vue') },
     { path: '/resources', component: () => import('../views/ResourcesView.vue') },
+    { path: '/m2/applications', component: () => import('../views/M2ApplicationsView.vue') },
+    { path: '/m2/applications/:id', component: () => import('../views/M2ApplicationsView.vue') },
+    { path: '/m2/approval-tasks', component: () => import('../views/M2ApplicationsView.vue') },
     { path: '/m3/work-orders', component: () => import('../views/WorkOrdersView.vue') },
     { path: '/m3/work-orders/:id', component: () => import('../views/WorkOrderDetailView.vue') },
     { path: '/notifications', component: () => import('../views/NotificationsView.vue') },
