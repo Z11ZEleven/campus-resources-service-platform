@@ -21,7 +21,7 @@ const form = reactive({ room_id: '', date: '', start: '09', end: '10', purpose: 
 const decision = reactive({ passed: true, comment: '' })
 const controller = new AbortController()
 const waiting = ['PENDING_FIRST_APPROVAL', 'PENDING_ROOM_APPROVAL']
-let alive = true, sequence = 0, poll: ReturnType<typeof setInterval> | undefined
+let alive = true, sequence = 0, detailSequence = 0, poll: ReturnType<typeof setInterval> | undefined
 let createFingerprint = '', createKey = '', reviewFingerprint = '', reviewKey = ''
 const withdrawKeys = new Map<string, string>()
 const now = ref(Date.now())
@@ -54,6 +54,7 @@ const canReview = computed(()=>!!current.value && current.value.applicant_id!==a
 function report(error: unknown) { if (alive && !axios.isCancel(error)) ElMessage.error(errorMessage(error)) }
 
 async function load(quiet = false) {
+  if (!alive) return
   const currentSequence=++sequence
   if (!quiet) loading.value=true
   loadError.value=''
@@ -75,7 +76,9 @@ async function load(quiet = false) {
 }
 function filterChanged() { page.value=1; void load() }
 async function showDetail(id:string) {
-  try { const value=await api.detail(id,controller.signal); if (alive) {current.value=value;detailOpen.value=true} }
+  if (!alive) return
+  const ticket=++detailSequence
+  try { const value=await api.detail(id,controller.signal); if (alive && ticket===detailSequence) {current.value=value;detailOpen.value=true} }
   catch(error) { report(error) }
 }
 async function moreRooms(reset=false) {
@@ -108,9 +111,10 @@ async function submitCreate() {
   } catch(error) {report(error)} finally {if (alive) busy.value=false}
 }
 async function openReview(id:string) {
+  const ticket=++detailSequence
   try {
     const value=await api.detail(id,controller.signal)
-    if (!alive) return
+    if (!alive || ticket!==detailSequence) return
     current.value=value;decision.passed=true;decision.comment='';reviewFingerprint='';reviewKey='';reviewOpen.value=true
   } catch(error) {report(error)}
 }
@@ -145,6 +149,7 @@ async function withdraw(app:api.Application) {
   } catch(error) {report(error);await load()} finally {if(alive)busy.value=false}
 }
 watch(()=>route.fullPath,()=>{
+  ++detailSequence
   page.value=1;items.value=[];tasks.value=[];total.value=0;detailOpen.value=false;reviewOpen.value=false
   void load()
   if(typeof route.params.id==='string')void showDetail(route.params.id)
@@ -153,18 +158,19 @@ onMounted(async()=>{
   try {const result=await api.me(controller.signal);if(alive)scopes.value=result.scopes} catch(error){report(error)}
   await load()
   if(typeof route.params.id==='string')await showDetail(route.params.id)
+  if (!alive) return
   poll=setInterval(()=>{
     now.value=Date.now()
     if(!busy.value && !createOpen.value && !reviewOpen.value) {
       void load(true)
       if(current.value && detailOpen.value) {
         const id=current.value.id
-        void api.detail(id,controller.signal).then(value=>{if(alive && detailOpen.value && current.value?.id===id)current.value=value}).catch(report)
+        void api.detail(id,controller.signal).then(value=>{if(alive && detailOpen.value && !reviewOpen.value && current.value?.id===id && value.version>=current.value.version)current.value=value}).catch(report)
       }
     }
   },5000)
 })
-onBeforeUnmount(()=>{alive=false;++sequence;controller.abort();if(poll)clearInterval(poll)})
+onBeforeUnmount(()=>{alive=false;++sequence;++detailSequence;controller.abort();if(poll)clearInterval(poll)})
 </script>
 
 <template>
