@@ -1,10 +1,10 @@
-# M1_PLAN.md：M1 自习座位预约模块开发实施计划
+# PLAN_M1.md：M1 自习座位预约模块开发实施计划
 
-> **版本**：v1.0，待团队评审  
-> **分析日期**：2026-10-21  
-> **代码基线**：`campus-resources-service-platform`，提交 `f811b54`  
-> **目标**：交付具备服务端权限控制、可靠并发裁决、来源隔离、签到提醒及真实跨模块联动的 M1 Web 模块。  
-> **执行限制**：本轮只读分析，未创建本文件，未修改项目、执行迁移或提交代码。以下为可保存为 `M1_PLAN.md` 的完整内容。  
+> **版本**：v1.1，T01–T05 实施提案，待团队评审
+> **分析日期**：2026-10-21；实施更新：2026-10-22
+> **代码基线**：`campus-resources-service-platform`，本轮起点提交 `0a5dba2`
+> **目标**：交付具备服务端权限控制、可靠并发裁决、来源隔离、签到提醒及真实跨模块联动的 M1 Web 模块。
+> **执行范围**：本轮仅实施 T01–T05。用户确认沿用现有技术基线并授权直接实施；分工仍待确定，不代签团队评审或人工验收。见 [实施方案](m1/t01-t05-design.md)。
 > **后续执行方式**：按任务依赖逐项实施、验证并交由人工验收；公共接口、数据库及跨模块变更须经相关负责人评审。
 
 ## 1. M1 模块需求与功能范围
@@ -15,17 +15,17 @@
 
 | 依据 | 本计划如何使用 |
 |---|---|
-| [软工 第9组 过程文档.md](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/软工 第9组 过程文档.md>) | M1 定位、模块边界、技术方向及 M2/M3 集成需求的主要依据 |
-| [仓库需求草案](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/docs/requirements.md>) | 保留 `M1-001～006`、`INT-001～003` 等现有编号 |
-| [公共层数据库表设计](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/公共层数据库表设计.md>) | 复用实体、关系和责任边界；它是 PostgreSQL 设计草案，并非已有数据库 |
-| [M1 业务边界](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/01-业务边界.md>) | 核对完整预约条件、来源隔离、通知失效及未决问题 |
-| [仓库代理规则](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/AGENTS.md>) | 开发、权限、跨模块、验证及人工责任约束 |
+| 软工 第9组 过程文档.md（仓库外材料 `软工 第9组 过程文档.md`，不随 Git 分发） | M1 定位、模块边界、技术方向及 M2/M3 集成需求的主要依据 |
+| [仓库需求草案](requirements.md) | 保留 `M1-001～006`、`INT-001～003` 等现有编号 |
+| [公共层数据库表设计](../公共层数据库表设计.md) | 复用实体、关系和责任边界；它是 PostgreSQL 设计草案，并非已有数据库 |
+| M1 业务边界（仓库外材料 `01-业务边界.md`，不随 Git 分发） | 核对完整预约条件、来源隔离、通知失效及未决问题 |
+| [仓库代理规则](../AGENTS.md) | 开发、权限、跨模块、验证及人工责任约束 |
 
 **事实边界：**
 
 - 未找到《Pj-任务书(1).pdf》，无法直接核验课程原文、附件及页码。
 - 过程文档和仓库需求仍包含候选规则，不应称为已经评审通过的正式需求基线。
-- 本次用户已确认：**JavaScript + MySQL；M1 组承担 D 空间资源子域；维修影响已有个人预约时采用免责处理。**
+- 本轮用户最新确认（覆盖早期技术建议）：**沿用 Vue 3 + TypeScript、FastAPI、MySQL 8.4、BIGINT UNSIGNED 和 UTC DATETIME(3)；M1 组承担 D 空间资源子域的规划；维修免责业务留给后续任务。**
 - 用户确认是本次规划依据，不替代全组对公共契约、分工和数据库变更的评审。
 
 ### 1.2 核心目标
@@ -132,48 +132,26 @@ M2 审批和 M3 派单、验收、评价不由 M1 实现。
 
 ## 2. 现有项目状态
 
-### 2.1 实际检查结果
+### 2.1 本轮代码基线（2026-10-22）
 
-仓库已初始化 Git，检查时工作区干净；最新提交添加公共数据库设计文档。
+原始规划按早期无工程状态分析；本轮起点 `0a5dba2` 已有 D 公共层、M3 后端/前端、MySQL 迁移 0001–0003、种子和基础 CI。不能再把它们描述为尚未实现。
 
-**没有可运行的业务工程。** 未发现：
+| 能力 | 起点状态 | 本轮处理 |
+| --- | --- | --- |
+| FastAPI、SQLAlchemy、配置、Db 事务、health/ready | 已实现 | T02 补请求 ID、脱敏错误与验证 |
+| Vue 3 + TypeScript、Vite、Element Plus | 已实现 | 沿用工程并接入会话、身份选择和空间维护 |
+| D 用户、单身份、JWT、固定角色权限 | 已实现初版 | T03 扩展可撤销会话、多身份、统一动态权限和服务主体 |
+| D 教室、座位、来源、汇总与审计 | 已实现初版 | T04 补建筑、完整开放区间与受控维护；T05 补占用明细 |
+| M3、站内通知、超时和评价 | 已实现 | 保留并进行回归 |
+| M1 业务表 | 尚未实现 | T05 建模与迁移；预约业务从 T09 实施 |
 
-- `package.json`、前端源码或依赖锁文件；
-- Python 应用源码、依赖声明或锁文件；
-- SQLAlchemy 模型、SQL 建表文件、Alembic 配置或迁移；
-- 实际 API、认证中间件、权限组件；
-- 单元测试、集成测试、端到端测试；
-- Dockerfile、Compose、CI workflow。
+### 2.2 冲突与处理
 
-因此，不能把 M1 计划写成“接入已经实现的登录服务”或“扩展现有预约表”。
+本轮以 [数据库统一契约](database-contract.md)、现有代码及用户最新确认作为实施基线：不将 JavaScript/UUID/DATETIME(6) 旧建议混入现有 TypeScript/BIGINT/DATETIME(3) 工程；不改写已发布迁移，不重复建立认证或资源系统。
 
-| 能力 | 分类 | 证据与含义 |
-|---|---|---|
-| Git、贡献规则、Issue/PR 模板 | 已实现，限协作材料 | [贡献指南](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/CONTRIBUTING.md>)；不代表远端分支保护已经启用 |
-| 需求编号、架构和责任描述 | 部分完成，文档层面 | [需求草案](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/docs/requirements.md>)、[架构草案](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/docs/architecture.md>) |
-| 公共数据库模型 | 部分完成，设计层面 | [公共表设计](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/公共层数据库表设计.md>)；25 张候选表，未执行建表 |
-| 后端应用、ORM、校验、错误处理、日志 | 尚未实现 | [后端说明](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/README.md>) |
-| 登录、用户及权限管理 | 尚未实现 | 只有公共表及规则草案 |
-| M1/M2/M3 业务 | 尚未实现 | 当前目录中没有对应源码 |
-| 前端公共布局、请求客户端、页面组件 | 尚未实现 | [前端说明](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/frontend/README.md>) |
-| 定时任务、通知、审计实现 | 尚未实现 | 只有职责和数据库候选设计 |
-| 部署和自动化测试 | 尚未实现 | [部署说明](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/deploy/README.md>) |
+`d_resource_blocks` 是既有来源事实表，不能再建 `d_resource_holds` 作为另一套来源。公共功能继续位于 `modules/auth`、`resources`、`audit`、`notifications`。
 
-“可复用”目前主要指**复用文档设计和统一契约**，不是复用现成 Service 或组件。
-
-### 2.2 已发现的冲突及处理
-
-| 冲突 | 处理方式 |
-|---|---|
-| 外层规则写“未初始化 Git”，子项目已有 Git | 以子项目实测为准，不重复初始化 |
-| 过程文档为 JavaScript/MySQL，仓库为 TypeScript/PostgreSQL 候选 | 按本次用户确认使用 JavaScript/MySQL；同步修订 ADR 和说明 |
-| 公共表使用 `TIMESTAMPTZ`、`JSONB`、PostgreSQL schema 和排斥约束 | 保留领域模型，进行第 4 节的 MySQL 适配 |
-| M1 边界把编码方案列为候选，仓库需求写每日编码 | 首版建议每日编码，M1-T01 明确评审；不增加另一套签到实现 |
-| 限制台账在部分文档归 M1，公共表设计归空间子域 | 由 M1 组承担 D 空间子域；代码与表仍维持公共资源职责 |
-| M2 有两套接口示例、M3 有独立限制接口草案 | 统一为本计划建议的来源版本接口，经双方评审后替换草案 |
-| 任务书及部分历史文档链接缺失 | 保留缺失标记，不引用为已经核实的事实 |
-
-未连接任何实际数据库，不能断言共享环境不存在额外表或历史数据。实施前须先核对团队测试环境，禁止直接套用空库初始化假设。
+人员与小组确认资料由用户明确为“尚未确定”；用户随后授权直接实施任务分支提案。责任登记保留待定，公共变更和人工验收仍须在合并前完成。旧规划的默认政策不是已通过的需求，尤其“当天 08:00–22:00”与跨日/提前窗口建议须在预约业务实施前收敛。
 
 ---
 
@@ -183,7 +161,7 @@ M2 审批和 M3 派单、验收、评价不由 M1 实现。
 
 | 层次 | 推荐 |
 |---|---|
-| 前端 | Vue 3、JavaScript、Vite、Element Plus、Vue Router |
+| 前端 | Vue 3、TypeScript、Vite、Element Plus、Vue Router |
 | 后端 | Python 3.12、FastAPI、Pydantic 2 |
 | 数据访问 | SQLAlchemy 2，同步 Session、PyMySQL |
 | 数据库 | MySQL 8.4、InnoDB、`utf8mb4` |
@@ -204,20 +182,20 @@ SQLAlchemy 官方提供 MySQL/PyMySQL、MySQL JSON 与微秒时间类型支持�
 | 独立 D 资源服务 | 部署边界更独立 | M1 需要资源协调状态、补偿和额外故障恢复 | 不作为首版 |
 | Redis 锁、消息代理和分布式协调 | 可扩展性较高 | 新增基础设施与一致性负担，当前没有基础 | 不引入 |
 
-前端不使用 TypeScript；不因过程文档中的 M3 示例使用 `.ts` 就另建技术路线。
+前端沿用现有 TypeScript 工程及统一请求客户端，不为 M1 另建 JavaScript 基线。
 
 ### 3.3 模块组织与调用边界
 
-建议新增以下目录，均为**目标结构，当前不存在**：
+建议新增以下目录，为原规划的目标结构；本轮沿用现有目录，不重复创建公共层：
 
 | 建议目录 | 职责 |
 |---|---|
-| [backend/app/core](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/core>) | 配置、数据库、异常、日志、请求关联标识 |
-| [backend/app/modules/m1](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/m1>) | 预约、签到、违约、使用统计、M1 任务 |
-| [backend/app/modules/d](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/d>) | 统一身份、空间资源、通知、审计子域 |
-| [backend/migrations](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/migrations>) | 统一版本化迁移 |
-| [backend/tests](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/tests>) | 单元、MySQL 集成及网络契约测试 |
-| [frontend/src/views/m1](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/frontend/src/views/m1>) | M1 学生和管理页面 |
+| [backend/app/core](../backend/app/core) | 配置、数据库、异常、日志、请求关联标识 |
+| [backend/app/modules/m1](../backend/app/modules/m1) | 预约、签到、违约、使用统计、M1 任务 |
+| backend/app/modules/d（规划路径 `backend/app/modules/d`） | 统一身份、空间资源、通知、审计子域 |
+| backend/migrations（规划路径 `backend/migrations`） | 统一版本化迁移 |
+| [backend/tests](../backend/tests) | 单元、MySQL 集成及网络契约测试 |
+| frontend/src/views/m1（规划路径 `frontend/src/views/m1`） | M1 学生和管理页面 |
 
 每个业务子域采用 `router → service → repository` 分层，Pydantic Schema 与 ORM Model 分开。
 
@@ -271,9 +249,11 @@ existing.start_at < requested.end_at
 
 ## 4. 数据库与权限设计方案
 
+本节保留完整领域规划；本轮已实现的实际表名、字段、接口与兼容策略以 [T01–T05 基础契约](m1/contracts.md) 为准。后续模型建议不能当作已建表。
+
 ### 4.1 复用公共模型，而非重新设计公共系统
 
-以下均是现有草案模型，实施时需要首次建表：
+以下为原领域模型；实际表名及类型以统一契约和版本化迁移为准，已有 D 表复用：
 
 | 草案表组 | M1 使用方式 | 维护边界 |
 |---|---|---|
@@ -282,7 +262,7 @@ existing.start_at < requested.end_at
 | `roles`、`permissions`、`role_permissions`、`user_roles`、`user_role_scopes` | 动作授权、授权有效期、数据范围 | D 身份子域 |
 | `buildings`、`rooms`、`seats` | 主数据、插座、启停、院系开放政策 | D 空间子域，由 M1 组承担 |
 | `room_opening_rules`、`room_opening_exceptions` | 周期与特殊开放区间 | 同上 |
-| `resource_holds`、`seat_allocations` | 来源台账和实际占用 | 同上 |
+| `d_resource_blocks`、`d_seat_allocations` | 来源台账和实际占用 | 同上 |
 | `seat_status_summary` | 可重建的查询投影 | 同上；不是预约事实源 |
 | `system_settings` | M1 参数，按键定义类型、单位和边界 | 公共配置接口维护 |
 | 通知三表、`audit_logs`、`outbox_events` | 通知投递、审计、持久化任务 | D 对应子域 |
@@ -294,8 +274,8 @@ existing.start_at < requested.end_at
 | 草案设计 | MySQL 实施方案 | 影响 |
 |---|---|---|
 | `d.users`、`m1.reservations` 等 schema | 同数据库内使用 `d_users`、`m1_reservations` 等前缀 | 所有模块统一映射 |
-| UUID | SQLAlchemy `Uuid(native_uuid=False)`，统一 `CHAR(32)` 存储；API 输出标准 UUID 字符串 | 主外键类型和排序规则必须一致 |
-| `TIMESTAMPTZ` | UTC `DATETIME(6)`；应用负责 UTC 转换，连接时区固定 UTC | ORM 不得丢失时区语义 |
+| UUID 旧建议 | 沿用 `BIGINT UNSIGNED`；API 输出十进制 ID 字符串 | 避免全模块破坏性迁移 |
+| `TIMESTAMPTZ` | UTC `DATETIME(3)`；应用负责 UTC 转换，连接时区固定 UTC | ORM 不得丢失时区语义 |
 | `JSONB` | MySQL `JSON` | 查询表达式使用 ORM 方言 |
 | 条件唯一索引 | 可空生成列加唯一索引 | 主要身份、有效授权等规则 |
 | PostgreSQL 排斥约束 | 教室锁、事务内重叠检查、受控唯一写入口 | 必须用真实 MySQL 并发测试验证 |
@@ -307,7 +287,7 @@ existing.start_at < requested.end_at
 
 其他适配要求：
 
-- 保留 `resource_holds` 中三个类型化业务来源字段及各自唯一约束。
+- 保留 `d_resource_blocks` 中三个类型化业务来源字段及各自唯一约束。
 - M1 预约外键可在预约表创建后补充；M2/M3 来源字段首版作为逻辑业务标识，不强制引用其私有表。
 - 保留座位与教室组合归属校验，不用两个独立外键冒充“座位属于该教室”。
 - 管理员来源采用来源记录自身 ID，不复用 M2/M3 身份。
@@ -315,7 +295,7 @@ existing.start_at < requested.end_at
 
 ### 4.3 M1 新增业务表
 
-所有表统一具有 UUID 主键和创建时间；可变表增加更新时间及版本。下面列出关键业务字段。
+所有表统一具有 BIGINT UNSIGNED 主键和创建时间；可变表增加更新时间及版本。下面列出关键业务字段。
 
 | 建议表 | 关键字段 | 约束、索引与用途 |
 |---|---|---|
@@ -455,7 +435,7 @@ M2 来源可以与维修限制并存。M1 不代替 M2 取消审批单；M2 对�
 
 - 对外前缀：`/api/v1`。
 - JSON 使用 `snake_case`，不同时兼容两套字段风格。
-- UUID 使用字符串；时间使用带偏移量 ISO 8601，响应统一 UTC。
+- 资源/业务 ID 使用 BIGINT 的十进制字符串；时间使用带偏移量 ISO 8601，响应统一 UTC。
 - 输入禁止额外字段，避免批量赋值修改状态或所有者。
 - 列表默认 20 条、最大 100 条，稳定按时间与 ID 排序。
 - 统一错误体：
@@ -501,8 +481,8 @@ M2 来源可以与维修限制并存。M1 不代替 M2 取消审批单；M2 对�
 
 ```json
 {
-  "identity_id": "UUID",
-  "seat_id": "UUID",
+  "identity_id": "123",
+  "seat_id": "123",
   "start_at": "2026-11-01T09:00:00+08:00",
   "end_at": "2026-11-01T11:00:00+08:00"
 }
@@ -551,7 +531,7 @@ M2 请求：
 
 ```json
 {
-  "room_id": "UUID",
+  "room_id": "123",
   "active": true,
   "revision": 1,
   "start_at": "2026-11-01T09:30:00+08:00",
@@ -564,7 +544,7 @@ M3 请求：
 
 ```json
 {
-  "room_id": "UUID",
+  "room_id": "123",
   "active": true,
   "revision": 1,
   "reason": "教室维修"
@@ -657,16 +637,16 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：固定本计划全部需求、边界和假设。
 - **依赖**：无。
-- **文件**：修改现有 [技术 ADR](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/docs/decisions/0001-technology-stack.md>)、[公共层 ADR](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/docs/decisions/0002-public-layer-ownership.md>)、需求草案及公共表设计；建议新增 [M1 文档目录](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/docs/m1>) 中的需求、数据、API 和验收文档。
+- **文件**：修改现有 [技术 ADR](decisions/0001-technology-stack.md)、[公共层 ADR](decisions/0002-public-layer-ownership.md)、需求草案及公共表设计；建议新增 [M1 文档目录](m1) 中的需求、数据、API 和验收文档。
 - **实施**：记录三项用户确认；评审第 1.6 节默认值；统一字段及接口；登记 D 子域主责、备份、接口维护及故障责任；建立需求—任务—测试映射。
-- **验收**：无 JavaScript/TypeScript、MySQL/PostgreSQL 双基线；公开契约可供 M2/M3 独立开发；未决项有明确实施或发布门禁。
+- **验收**：无 JavaScript/TypeScript、MySQL/PostgreSQL 双实施基线；公开契约可供 M2/M3 独立开发；未决项有明确实施或发布门禁。
 - **风险**：不得代填成员姓名、会议确认、任务书出处或全组共识。
 
 ### M1-T02：建立最小工程、配置和测试入口
 
 - **目标/需求**：为全部 M1 任务提供真实可运行基础。
 - **依赖**：T01。
-- **文件**：建议新增 [后端入口](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/main.py>)、core 配置/数据库/错误/日志文件、后端依赖与锁文件；[前端入口](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/frontend/src/main.js>)、包声明及锁文件。
+- **文件**：建议新增 [后端入口](../backend/app/main.py)、core 配置/数据库/错误/日志文件、后端依赖与锁文件；前端入口（规划路径 `frontend/src/main.js`）、包声明及锁文件。
 - **实施**：初始化推荐技术栈；统一请求 ID、错误模型和异常脱敏；建立会话级数据库依赖、测试配置和同源代理。
 - **验收**：应用可启动；健康检查及数据库 readiness 区分；前端可构建；真实数据库连接测试有效；启动所需变量有脱敏示例。
 - **风险**：readiness 不等于业务验收；示例不包含可用凭据。
@@ -675,7 +655,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：M1-001-B、所有受保护操作。
 - **依赖**：T01、T02；D 身份负责人交付。
-- **文件**：建议新增 [D 身份子域](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/d/auth>) 和 [M1 权限接入](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/m1/permissions.py>)。
+- **文件**：建议新增 D 身份子域（规划路径 `backend/app/modules/d/auth`） 和 M1 权限接入（规划路径 `backend/app/modules/m1/permissions.py`）。
 - **实施**：由 D 交付统一表、会话、当前主体、动作与范围判定、服务身份；M1 注册权限并补充本人所有权判断；前端接统一登录和身份选择。
 - **验收**：未认证、无权限、跨院系、越界管理员、伪造身份、角色撤销均被拒绝；不同角色的动作与范围不能错误拼接。
 - **风险**：这是外部协作任务，不能由 M1 私建替代认证；缺失时阻断真实受保护链路。
@@ -684,7 +664,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：M1-001、M1-006-A。
 - **依赖**：T02、T03。
-- **文件**：建议新增 [D 空间子域](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/d/spaces>) 中的模型、Schema、Repository、Service、Router 和开放规则计算文件。
+- **文件**：建议新增 D 空间子域（规划路径 `backend/app/modules/d/spaces`） 中的模型、Schema、Repository、Service、Router 和开放规则计算文件。
 - **实施**：按草案创建建筑、教室、座位和开放规则；实现唯一性、组合归属、软注销、版本及管理范围；特殊关闭从周期开启中扣除，特殊开启补入可用区间。
 - **验收**：能从真实数据库查询种子教室；无效关系被拒绝；完整区间、分段开放、跨午夜、特殊关闭和午夜终点正确。
 - **风险**：不能只比较起点；已用资源不物理删除，座位不原地跨室迁移。
@@ -693,7 +673,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：M1-002～005、来源追溯。
 - **依赖**：T03、T04。
-- **文件**：建议新增 [M1 模型](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/m1/models.py>)、Repository，以及统一迁移目录中的版本文件。
+- **文件**：建议新增 [M1 模型](../backend/app/modules/m1/models.py)、Repository，以及统一迁移目录中的版本文件。
 - **实施**：建立第 4.3 节业务表、索引和约束；创建来源与占用表并补 M1 外键；通过统一接口读取配置。
 - **验收**：空库、前版升级、已有合成数据升级和重复种子通过；无循环建表依赖；非法区间、来源组合、座位归属被拒绝。
 - **风险**：迁移不能依赖尚不存在的 M2/M3 私有表。
@@ -702,7 +682,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：M1-004、所有关键变更的可追溯性。
 - **依赖**：T02、T05；D 通知/审计提供方参与。
-- **文件**：建议新增 [M1 集成目录](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/m1/integrations>)、[Worker 入口](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/worker.py>)、D 公共任务设施。
+- **文件**：建议新增 M1 集成目录（规划路径 `backend/app/modules/m1/integrations`）、Worker 入口（规划路径 `backend/app/worker.py`）、D 公共任务设施。
 - **实施**：公开 Outbox 写入接口、租约领取、版本保护、重试和故障查询；M1 登记业务事件；D 交付通知接收、实际渠道及受控审计接收。
 - **验收**：进程崩溃后租约恢复；多个 Worker 不丢任务；接收方已成功但响应丢失时重试不重复产生消息或审计。
 - **风险**：业务事件不因远程失败丢失；开发日志不能作为最终通知渠道。
@@ -711,7 +691,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：M1-002-B、INT-001～003。
 - **依赖**：T04、T05、T06。
-- **文件**：建议新增 [D 资源子域](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/d/resources>)，包括来源模型、占用模型、操作记录、冲突及锁服务。
+- **文件**：建议新增 D 资源子域（规划路径 `backend/app/modules/d/resources`），包括来源模型、占用模型、操作记录、冲突及锁服务。
 - **实施**：实现教室锁、半开区间、全室与座位来源检查、精确释放、版本墓碑及同事务资源版本更新；统一所有资源写入口。
 - **验收**：同座位竞争最多一个成功；M1 与 M2 竞争不能双成功；双维修工单释放一张仍受限；整室来源阻挡后来新增座位。
 - **风险**：绕开内核的任何写路径都会破坏保证；禁止直接批量重置可用状态。
@@ -720,7 +700,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：M1-001-A/B。
 - **依赖**：T03、T04、T07。
-- **文件**：建议新增 [M1 可预约判定](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/m1/availability.py>)、查询 Service、Schema 和 Router。
+- **文件**：建议新增 M1 可预约判定（规划路径 `backend/app/modules/m1/availability.py`）、查询 Service、Schema 和 Router。
 - **实施**：统一身份、院系、完整开放区间、预约参数、座位属性及来源检查；返回最小必要信息；分页前应用权限过滤。
 - **验收**：筛选组合正确；未授权院系无结果且不能绕过；查询结果不泄漏预约人；直接计算与后续汇总结果一致。
 - **风险**：查询通过不构成资源承诺。
@@ -729,7 +709,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：M1-002-A/C、M1-005。
 - **依赖**：T05、T06、T07、T08。
-- **文件**：建议新增 [预约 Service](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/m1/reservation_service.py>)，扩展 M1 Schema、Router、Repository。
+- **文件**：建议新增 预约 Service（规划路径 `backend/app/modules/m1/reservation_service.py`），扩展 M1 Schema、Router、Repository。
 - **实施**：创建时重新校验、事务创建预约和来源、保存参数快照、登记未来任务；取消精确释放；历史按本人过滤，复用走普通创建。
 - **验收**：重复创建不新增预约和任务；事务中断不留孤立占用；取消不能释放 M2/M3；历史座位已停用时复用失败且原历史保留。
 - **风险**：所有者由会话取得；修改请求内容必须换幂等键。
@@ -738,7 +718,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：M1-003-A/B。
 - **依赖**：T03、T09。
-- **文件**：建议新增 [签到 Service](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/m1/checkin_service.py>)、编码计算与尝试记录逻辑。
+- **文件**：建议新增 签到 Service（规划路径 `backend/app/modules/m1/checkin_service.py`）、编码计算与尝试记录逻辑。
 - **实施**：每日编码、受控展示、人工轮换、恒定时间比较；同用户同室 10 分钟内最多 5 次失败；教室锁内裁决签到与到期。
 - **验收**：错教室、旧码、轮换前编码、过早及截止时刻被拒绝；跨午夜按当前校园日期；重复签到不重复事件。
 - **风险**：每日编码可被转发，不应宣称能证明物理到场；不采集生物特征弥补这一限制。
@@ -747,7 +727,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：M1-004-A～D。
 - **依赖**：T06、T09、T10。
-- **文件**：建议新增 [M1 后台任务目录](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/m1/jobs>)，包括提醒、到期、完成及有效性处理器。
+- **文件**：建议新增 M1 后台任务目录（规划路径 `backend/app/modules/m1/jobs`），包括提醒、到期、完成及有效性处理器。
 - **实施**：按第 5.5 节实现持久化时点、条件更新、违约唯一约束、补执行和旧提醒失效；任务领取与业务事务分开。
 - **验收**：可控时钟覆盖三个时点前后；签到/超时并发仅一个结果；重启不重复违约；通知失败仍完成必要释放。
 - **风险**：不能用每个 Web 进程自己的内存定时器；长时间系统故障不自动追加封禁处罚。
@@ -756,7 +736,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：INT-001～003、本次确认的维修策略。
 - **依赖**：T03、T07、T09、T11。
-- **文件**：建议新增 [资源内部 Router](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/d/resources/internal_router.py>)、[M1 资源影响处理器](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/m1/resource_impact_service.py>)。
+- **文件**：建议新增 资源内部 Router（规划路径 `backend/app/modules/d/resources/internal_router.py`）、M1 资源影响处理器（规划路径 `backend/app/modules/m1/resource_impact_service.py`）。
 - **实施**：实现来源/操作幂等、乱序、墓碑、结果查询；M3 生效时免责取消/中断；M2 冲突返回最小信息；严格校验服务来源。
 - **验收**：先释放后旧添加不复活；同键异载荷拒绝；超时后可核对结果；维修与签到/预约/超时竞争无错误违约。
 - **风险**：维护事务可能影响多条未来预约；M2/M3 不能以“请求受理”冒充资源成功。
@@ -765,7 +745,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：M1-006-A/B。
 - **依赖**：T04、T09、T10、T11、T12。
-- **文件**：建议新增 [M1 管理 Service](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/app/modules/m1/admin_service.py>)、统计查询和管理 Router；扩展 D 空间变更服务。
+- **文件**：建议新增 M1 管理 Service（规划路径 `backend/app/modules/m1/admin_service.py`）、统计查询和管理 Router；扩展 D 空间变更服务。
 - **实施**：参数白名单及版本；管理员范围查询；关闭资源时调用免责影响处理；输出预约数、签到数、取消/违约数、计划分钟和实际使用分钟。
 - **验收**：局部管理员不能修改全局参数或跨范围聚合；旧版本更新失败；参数修改不改变旧预约的快照规则；资源停用不破坏历史。
 - **风险**：首版“使用兑现率”为实际使用分钟/对应计划分钟；不冒称缺乏历史容量依据的全校资源利用率。没有签到证据的时段不算实际使用。
@@ -774,7 +754,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：M1-001～005。
 - **依赖**：T02、T03；页面可按契约先行，真实验收依赖 T08～T11。
-- **文件**：建议新增 [M1 API 客户端](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/frontend/src/api/m1.js>)、[M1 学生页面](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/frontend/src/views/m1>) 和组件。
+- **文件**：建议新增 M1 API 客户端（规划路径 `frontend/src/api/m1.js`）、M1 学生页面（规划路径 `frontend/src/views/m1`） 和组件。
 - **实施**：搜索、确认、我的预约、详情、签到、历史复用和违约展示；复用公共请求和登录；处理重复提交及冲突刷新。
 - **验收**：真实浏览器完成预约、查询、签到及取消；时间偏移展示正确；历史复用生成新单；错误不会被显示为成功。
 - **风险**：Mock 只用于前端开发与组件测试，不能作为联调验收。
@@ -783,7 +763,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：M1-006、受控编码展示、查询性能。
 - **依赖**：T10、T13；投影依赖 T07、T08。
-- **文件**：建议新增 [管理页面目录](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/frontend/src/views/admin>)、D 资源汇总计算文件及查询索引迁移。
+- **文件**：建议新增 管理页面目录（规划路径 `frontend/src/views/admin`）、D 资源汇总计算文件及查询索引迁移。
 - **实施**：空间、座位、开放规则、预约、统计、参数和编码管理；按窗口生成汇总，版本失效后重算；缺失投影回退真实计算。
 - **验收**：管理员只操作授权资源；旧汇总不会放行新预约；仅释放一个来源后展示仍正确；前端构建和组件行为测试通过。
 - **风险**：汇总状态不能混入用户院系资格，不能替代完整授权。
@@ -792,7 +772,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：全部关键业务及 INT-001～003。
 - **依赖**：T12、T14、T15；实际 M2/M3 服务可用。
-- **文件**：建议新增 [M1 集成测试](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/tests/m1>)、[跨模块测试](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/backend/tests/integration>) 和 [前端 E2E](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/frontend/e2e>)。
+- **文件**：建议新增 M1 集成测试（规划路径 `backend/tests/m1`）、跨模块测试（规划路径 `backend/tests/integration`） 和 前端 E2E（规划路径 `frontend/e2e`）。
 - **实施**：真实 MySQL 独立连接并发；真实 M2/M3 HTTP；注入响应丢失、进程重启、投递失败和事件乱序；执行关键规则破坏性验证后恢复。
 - **验收**：第 8 节矩阵全部有实际证据；不能 Mock 掉被测 Service、权限或资源裁决。
 - **风险**：只有测试客户端、健康检查或静态契约检查时，标记“真实模块联调未完成”。
@@ -801,7 +781,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 - **目标/需求**：ENG-001～003及可重复交付。
 - **依赖**：基础 CI 从 T02 开始；最终门禁依赖 T16。
-- **文件**：建议新增 [CI workflow](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/.github/workflows/ci.yml>)、[Compose 配置](</Users/zadios/Documents/Obsidian Vault/Fudan/软件过程管理与工程伦理/BPJ/campus-resources-service-platform/deploy/compose.yaml>)、镜像构建配置；修改现有 README。
+- **文件**：建议新增 CI workflow（规划路径 `.github/workflows/ci.yml`）、Compose 配置（规划路径 `deploy/compose.yaml`）、镜像构建配置；修改现有 README。
 - **实施**：构建、真实 MySQL 测试、前端测试和 E2E；测试失败阻断；测试环境统一迁移和全部模块部署；共享部署互斥；记录 SHA、tag、迁移版本和回退流程。
 - **验收**：干净环境可按已验证命令启动；Worker 独立运行；全部模块部署和真实联调通过；人工检查运行版本。
 - **风险**：分支保护需要维护者在 GitHub 配置；生产审批、合并及代码冲突处理由人工负责。
@@ -812,7 +792,7 @@ D 通知接口接收业务关联、接收人、事件键、模板、有效截止
 
 | 阶段 | 目标与顺序 | 前置条件 | 交付物和进入下一阶段的门槛 |
 |---|---|---|---|
-| Phase 0：规则收敛 | T01 | 当前只读分析 | 需求、技术和资源契约经评审；责任落实到人；缺失任务书明确记录 |
+| Phase 0：规则收敛 | T01 | 原规划；本轮已获用户授权先实施提案 | 需求、技术和资源契约经评审；责任落实到人；缺失任务书明确记录 |
 | Phase 1：真实基础链路 | T02 → T03/T04；同步启动 T06 公共契约 | 技术基线确定 | 登录后读取数据库真实教室；权限拒绝有效；基础 CI 可运行 |
 | Phase 2：预约闭环 | T05/T06 → T07 → T08 → T09；T14 搜索预约部分跟进 | 身份、主数据、公共任务接口可用 | 浏览器搜索、预约、取消、历史可用；并发和隔离通过 |
 | Phase 3：签到与自动处理 | T10 → T11；T14 完成 | 预约闭环通过 | 编码签到、三个时点、违约、正常结束和重启恢复通过 |
@@ -914,7 +894,7 @@ T02/T17 必须补齐并实际运行：
 
 | 事项 | 本次结论 |
 |---|---|
-| 前端和数据库 | JavaScript + MySQL |
+| 前端和数据库 | TypeScript + MySQL 8.4 |
 | 资源维护责任 | M1 组承担 D 空间资源子域 |
 | 个人预约与资源协调 | 同服务公开接口、同数据库事务 |
 | 维修影响个人预约 | 未签到免责取消，已签到免责中断 |
@@ -924,8 +904,8 @@ T02/T17 必须补齐并实际运行：
 
 | 事项 | 门禁与处理 |
 |---|---|
-| 技术、公共 schema、来源接口共同评审 | 进入相关实现前完成；不得把本次规划当成全组批准 |
-| D 到人责任、接口维护和故障责任 | T01 完成前登记，不由 AI 填写 |
+| 技术、公共 schema、来源接口共同评审 | 用户已授权本轮任务分支实作提案；共同评审在合并前完成，不把用户授权写作全组批准 |
+| D 到人责任、接口维护和故障责任 | 本轮登记为待定（用户已明确授权先实作）；到人资料由人工在合并前补齐 |
 | D 身份实现与服务身份 | T03 的真实链路门禁；不以硬编码主体替代 |
 | 任务书原件 | 不阻断基础实现，但在宣称课程需求完整符合前必须核验 |
 | 通知渠道 | 首版建议实现真实站内通知，D 负责人确认课程是否另需邮件/微信；最终提醒验收不能只看日志 |
@@ -935,7 +915,7 @@ T02/T17 必须补齐并实际运行：
 
 ### 9.3 主要技术与伦理风险
 
-- **公共能力尚未实现**：M1 的关键路径包含 D 外部交付，不能只估算预约页面工作量。
+- **公共依赖需要共同维护**：已有 D 实现并不代表全部业务契约已验收，M1 后续交付仍须包含集成工作量。
 - **MySQL 适配影响全组**：必须统一 ID、时间、JSON 和迁移，不保留两套数据库口径。
 - **教室锁吞吐量有限**：先测量，未出现证据前不引入 Redis 或拆分锁粒度。
 - **维修结束未知**：可能取消多天未来预约，这是保守安全策略；须在产品提示和团队评审中明确。
@@ -953,11 +933,13 @@ T02/T17 必须补齐并实际运行：
 
 ### 10.1 Implement List
 
-- [ ] **T01**：完成需求追踪、技术 ADR、资源契约及责任登记。
-- [ ] **T02**：建立可启动前后端、数据库连接、错误格式、请求 ID 和基础 CI。
-- [ ] **T03**：接入真实 D 会话、统一权限、身份选择及服务主体。
-- [ ] **T04**：实现空间、座位、插座、开放规则和受控维护。
-- [ ] **T05**：建立 M1 业务表、来源表、占用表、索引和版本化迁移。
+2026-10-22：仅勾选本轮 T01–T05 工程交付，证据见 [需求追踪](m1/traceability.md)、[基础契约](m1/contracts.md)与 [验证记录](m1/verification.md)。用户授权先实施提案，T01 责任表登记为待定；勾选不代表人员已落实、组内评审或人工验收通过。T06–T17 仍未完成。
+
+- [x] **T01**：完成需求追踪、技术 ADR、资源契约及责任登记。
+- [x] **T02**：建立可启动前后端、数据库连接、错误格式、请求 ID 和基础 CI。
+- [x] **T03**：接入真实 D 会话、统一权限、身份选择及服务主体。
+- [x] **T04**：实现空间、座位、插座、开放规则和受控维护。
+- [x] **T05**：建立 M1 业务表、来源表、占用表、索引和版本化迁移。
 - [ ] **T06**：建立公开 Outbox 接口、Worker、真实通知及审计适配。
 - [ ] **T07**：实现统一教室锁、冲突检查、精确释放和版本墓碑。
 - [ ] **T08**：实现权限过滤后的座位搜索及完整可预约判定。

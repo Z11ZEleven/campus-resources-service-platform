@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-第一次功能迭代：已加入公共层 D 的 MySQL 后端、迁移与种子数据、认证与资源 API、模块接入函数、最小 Vue 示例和 CI 检查配置；M3 已提供工单主表与上报、查询、派单、维修、完工和验收后端。M1/M2 业务功能、M3 前端及后续扩展、自动部署和生产发布尚未实现。
+第一次功能迭代：已加入公共层 D 的 MySQL 后端、迁移与种子数据、认证与资源 API、模块接入函数、最小 Vue 示例和 CI 检查配置；M3 已提供工单主表与上报、查询、派单、维修、完工和验收后端。M1 T01–T05 已提供基础模型、统一会话与范围授权、空间维护与开放规则；M1 预约/签到等业务、M2 业务、自动部署和生产发布尚未实现。M3 已有前端，后续扩展继续按模块计划推进。
 
 开始运行请看 [后端启动说明](backend/README.md)、[公共前端](frontend/README.md) 和 [模块接入指南](docs/public-layer-integration.md)。
 
@@ -37,6 +37,9 @@ M3 的接口、权限、状态与测试见 [M3 后端接入说明](docs/m3-backe
 | backend/ | 公共层 FastAPI、MySQL 迁移、初始化和测试 |
 | deploy/ | 本地 MySQL Compose；自动部署待实现 |
 | docs/public-layer-integration.md | 各模块调用公共层的接口与事务约定 |
+| docs/m1/contracts.md | M1 T01–T05 基础接口、数据及兼容契约 |
+| docs/m1/traceability.md | M1 需求—任务—实现—测试对应 |
+| docs/m1/verification.md | 本轮实际验收结果与未决事项 |
 | docs/database-contract.md | D、M1、M2、M3 统一数据库字段与变更流程 |
 | docs/requirements.md | 需求草案、追踪表及待定规则 |
 | docs/team.md | 分工与公共层责任表 |

@@ -1,8 +1,8 @@
 # 公共层 D 与 M3 后端
 
-已实现 FastAPI + SQLAlchemy + MySQL 的公共基础和 M3 文字报修闭环，现包含 **9 张 D 表、3 张 M3 表**。M3 提供上报、查询、派单、维修、完工、验收、超时升级、一次性评价及真实站内通知；对应 Vue 前端已接入。M1/M2 业务表及业务页面尚未实现。
+已实现 FastAPI + SQLAlchemy + MySQL 的公共基础和 M3 文字报修闭环，现包含 **17 张 D 表、5 张 M1 表、3 张 M3 表**。M3 提供上报、查询、派单、维修、完工、验收、超时升级、一次性评价及真实站内通知；对应 Vue 前端已接入。M1 五张表已建立，但预约/签到等业务接口与页面尚未实现；M2 业务仍待后续实施。
 
-M3 接口、状态流转、权限与幂等语义见 [M3 后端](../docs/m3-backend.md)与 [超时/评价/通知扩展](../docs/m3-extensions.md)。执行 `alembic upgrade head` 会升级至 `0003_m3_extensions`，保留原公共层表与工单数据。新增 D 通知契约为本次用户确认的本地实现提案，待团队评审，不代表团队共识。
+M3 接口、状态流转、权限与幂等语义见 [M3 后端](../docs/m3-backend.md)与 [超时/评价/通知扩展](../docs/m3-extensions.md)。执行 `alembic upgrade head` 会升级至 `0006_m1_foundation`，保留原公共层表与工单数据。新增 D 通知契约为本次用户确认的本地实现提案，待团队评审，不代表团队共识。
 
 ## 1. 准备与启动
 
@@ -67,7 +67,7 @@ Linux/macOS 将 .\.venv\Scripts\python.exe 换为 .venv/bin/python，其余命�
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | /api/v1/auth/login | JSON 用户名和密码，返回 Bearer Token |
+| POST | /api/v1/auth/login | JSON 用户名和密码，建立 Cookie 会话，返回 authenticated |
 | GET | /api/v1/auth/me | 当前用户、身份、角色，ID 为字符串 |
 | GET | /api/v1/auth/users?role_code=REPAIRER | 管理员查询有效人员，分页 |
 | GET | /api/v1/resources/rooms | 院系及角色过滤教室，分页 |
@@ -86,7 +86,7 @@ Linux/macOS 将 .\.venv\Scripts\python.exe 换为 .venv/bin/python，其余命�
 {"username":"student","password":"填写你的本地演示密码"}
 ```
 
-在 /docs 点 Authorize 填入 Token 即可测试其余接口。接口不暴露 password_hash，也不对终端用户开放任意资源来源增删接口。
+使用同源前端登录，浏览器 Cookie 会话在刷新后恢复；修改请求自动携带 CSRF，退出撤销服务端会话。旧 JWT 已失效，不再将其填入 Authorize 使用。接口不暴露 password_hash，也不对终端用户开放任意资源来源增删接口。
 
 ## 4. 各模块如何接入
 
@@ -127,4 +127,26 @@ $env:TEST_DATABASE_URL="mysql+pymysql://测试用户:测试密码@127.0.0.1:3306
 
 ## 6. 后续工作
 
-M1/M2 业务表和接口、动态 RBAC、细粒度管理范围、签到违约、附件、撤销/转派/重开、完整独立业务事件流、外部邮件/微信通知、真实模块间网络集成与跨进程可靠补偿、测试部署、生产审批和发布回滚仍待后续实现。原完工请求缺少幂等轮次的限制仍保留，详见 [M3 已知限制](../docs/m3-backend.md#8-已记录的原设计限制)。
+M1 业务接口、M2 业务表和接口、M3 局部业务权限适配、签到违约、附件、撤销/转派/重开、完整独立业务事件流、外部邮件/微信通知、真实模块间网络集成与跨进程可靠补偿、测试部署、生产审批和发布回滚仍待后续实现。原完工请求缺少幂等轮次的限制仍保留，详见 [M3 已知限制](../docs/m3-backend.md#8-已记录的原设计限制)。
+
+## 7. T01–T05 初始化与升级
+
+升级先备份历史数据库，执行已有 Alembic 命令到 0006，再运行种子；旧用户、来源、M3 工单和通知保留。旧客户端重新登录；人员责任和共同评审仍待人工完成。不要在共享业务库运行测试或 downgrade。完整契约见 [M1 基础契约](../docs/m1/contracts.md)。
+
+全局管理员首次初始化（使用部署操作员的数据库配置；已有同名用户不恢复权限、不改密码）：
+
+```bash
+# 从安全的本机环境注入 BOOTSTRAP_ADMIN_PASSWORD，至少12字符；不提交环境文件。
+.venv/bin/python -m scripts.bootstrap_admin --username local_admin --display-name 本地管理员
+```
+
+管理员通过角色授权 API 配置作用域；SYS_ADMIN 没有隐式的 M1/M2/M3 业务特权。服务凭据必须从环境注入 SERVICE_AUTH_TOKEN（至少32字符），仅保存摘要：
+
+```bash
+# 将数字替换为已初始化的管理员和房间 ID；可重复指定 --room-id。
+.venv/bin/python -m scripts.provision_service --actor-id 1 --name m2-service --module M2 --room-id 1
+```
+
+轮换用 --rotate；停用用 --disable。两者均审计；服务所属模块不可原地修改。命令不会输出凭据，不能用数据库手工写记录替代。生产 HTTPS 设置 SESSION_COOKIE_SECURE=true；本机 HTTP 可为 false，SESSION_MINUTES 控制会话期限。JWT_SIGNING_KEY 目前仍作为旧辅助代码配置项校验，但 HTTP 不接受 JWT。
+
+首次运行测试需要真实 MySQL 8.4 专用 *_test 库。CI 会在 pytest 后执行 alembic check；Ruff、完整测试及生产构建命令沿用上文。实际本轮结果见 [验证记录](../docs/m1/verification.md)。

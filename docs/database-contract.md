@@ -1,5 +1,7 @@
 # 数据库统一契约
 
+> **2026-10-22 更新**：T01–T05 新增 0004–0006 迁移；当前 17 张 D 表、5 张 M1 表、3 张 M3 表。下文 §2 为原 0001–0003 字段基线，新结构及兼容变化详见 [M1 基础契约](m1/contracts.md)。
+
 > 本文件是 M1、M2、M3 和 D 共同使用的字段基线。实现以当前 Alembic 迁移和 SQLAlchemy 模型为准；修改公共字段必须先更新本文件并由各模块评审。
 
 ## 1. 全局约定
@@ -17,7 +19,7 @@
 
 ## 2. 公共层 D 表（当前实现）
 
-当前迁移已创建 9 张 D 表。`0001_public_layer` 创建前 8 张；`0003_m3_extensions` 增加 `d_notifications`。
+0001–0003 原迁移创建 9 张 D 表。`0001_public_layer` 创建前 8 张；`0003_m3_extensions` 增加 `d_notifications`。
 
 ### 2.1 用户、身份与角色
 
@@ -38,7 +40,7 @@
 | 字段 | 类型 | 可空 | 约束/用途 |
 |---|---|---:|---|
 | `id` | BIGINT UNSIGNED | 否 | 主键 |
-| `user_id` | BIGINT UNSIGNED | 否 | FK → `d_users.id`；当前一人一个身份 |
+| `user_id` | BIGINT UNSIGNED | 否 | FK → `d_users.id`；0004 起支持一人多身份 |
 | `identity_type` | VARCHAR(20) | 否 | `STUDENT` / `TEACHER` / `STAFF` |
 | `identity_no` | VARCHAR(64) | 否 | 学号或工号；与类型组合唯一 |
 | `department_code` | VARCHAR(32) | 否 | 与 `d_rooms.department_code` 使用同一编码 |
@@ -55,7 +57,7 @@
 | `role_code` | VARCHAR(32) | 否 | `USER` / `ROOM_ADMIN` / `PROPERTY_ADMIN` / `REPAIRER` / `SYS_ADMIN` |
 | `created_at` | DATETIME(3) | 否 | UTC |
 
-唯一约束：`d_user_identities(user_id)`、`d_user_identities(identity_type, identity_no)`、`d_user_roles(user_id, role_code)`。
+0004 后唯一约束：`d_user_identities(identity_type, identity_no)`、`d_user_identities(id, user_id)`、`d_user_roles(user_id, role_code, scope_type, scope_value)`。新增 `scope_type/scope_value`；旧授权保留 GLOBAL/*，不将作用域权限混用。
 
 ### 2.2 教室、座位与统一资源来源
 
@@ -163,7 +165,7 @@ M1、M2、M3 的业务表由模块负责人维护，但字段必须遵守以下�
 
 | 模块表 | 必须字段 | 必须引用 |
 |---|---|---|
-| `m1_reservations` | `id`、`created_at`、`updated_at`、`user_id`、`room_id`、`seat_id`、`start_at`、`end_at`、`status`、`request_key` | `user_id → d_users.id`；`room_id → d_rooms.id`；`seat_id → d_seats.id`；来源写 `M1` |
+| `m1_reservations` | `id`、`created_at`、`updated_at`、`user_id`、`room_id`、`seat_id`、`start_at`、`end_at`、`status`、`create_request_key`、`request_hash`、`identity_id` | `user_id → d_users.id`；`room_id → d_rooms.id`；`seat_id → d_seats.id`；来源写 `M1` |
 | `m2_applications` | `id`、`created_at`、`updated_at`、`applicant_id`、`room_id`、`start_at`、`end_at`、`status`、`request_key` | `applicant_id → d_users.id`；`room_id → d_rooms.id`；批准后来源写 `M2` |
 | `m3_work_orders` | `id`、`created_at`、`updated_at`、`reporter_id`、`room_id`、`status`、`request_key` | `reporter_id → d_users.id`；`room_id → d_rooms.id`；维修中来源写 `M3` |
 
@@ -187,4 +189,12 @@ M1、M2、M3 的业务表由模块负责人维护，但字段必须遵守以下�
 4. 添加迁移回放、外键、事务和接口行为测试；
 5. 在 PR 描述中列出受影响模块，由 D、M1、M2、M3 至少各一名成员评审。
 
-当前 M1/M2 业务表和接口尚未实现，本契约先冻结公共字段和模块引用关系，后续模块 PR 必须以本文件为准。
+M1 基础模型已由 0006 建立，HTTP 业务仍未实现；M2 业务表和接口尚未实现。M1 创建幂等键实际为 `create_request_key`，与旧字段建议 `request_key` 不并存；详见基础契约。
+
+## 6. T01–T05 追加结构
+
+- 0004：d_auth_sessions、d_role_permissions、d_service_principals、d_service_room_scopes；调整身份唯一关系和角色范围。会话/服务凭据仅存摘要，撤销/轮换受控；新增表均有 id 和 created_at，可变服务主体有 updated_at。
+- 0005：d_buildings、d_room_opening_rules、d_room_opening_exceptions；教室新增 building_id 与 opening_rules_enabled；历史建筑名回填，保留兼容显示名。规则以替换方式维护，保留 created_at，公共审计保存管理变更。
+- 0006：五张 m1 业务表及 d_seat_allocations；来源继续用 d_resource_blocks，新增复合唯一键支持归属外键；完整字段/索引以静态版本迁移及 models 为准，概览见基础契约 §5。
+
+本轮是用户授权的任务分支提案；未确定的人员与组内评审保留待定状态，不代签团队确认。迁移不能依赖 M2 私有表；现有 M3 数据和来源必须保留。

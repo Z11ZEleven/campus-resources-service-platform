@@ -1,5 +1,7 @@
 # 公共层 D 接入指南
 
+2026-10-22：M1 T01–T05 扩展了 D 会话、身份/范围授权、主数据维护与开放规则、资源占用明细以及 M1 五张模型表，新增迁移 0004–0006。以下首次迭代说明是历史边界；新增接口与升级兼容以 [M1 基础契约](m1/contracts.md) 为准。M1 预约/签到业务及实际 M2/M3 HTTP 写回仍待后续任务。
+
 ## 1. 已交付边界
 
 第一次迭代实现 MySQL 公共层的 8 张 D 表、版本化迁移、种子、认证和查询 API、资源公开函数、最小操作记录及公共 Vue 示例。随后在 `0003_m3_extensions` 中新增 D 站内通知表/服务/API/前端中心，当前为 9 张 D 表；M3 已实现 3 张业务表、报修闭环、超时任务与评价。公共字段基线见[数据库统一契约](database-contract.md)，M1/M2/M3 私有业务表与状态仍由各模块实现。
@@ -17,8 +19,8 @@
 | ID | 数据库 BIGINT UNSIGNED；Python int；HTTP JSON string |
 | 时间 | 输入 aware datetime，存 DATETIME(3) UTC，输出含 Z，页面北京时间 |
 | 角色 | USER、ROOM_ADMIN、PROPERTY_ADMIN、REPAIRER、SYS_ADMIN |
-| 身份 | STUDENT、TEACHER、STAFF；首轮每用户一个有效身份 |
-| 错误 | DomainError → detail.code、detail.message；422 字段校验保留 FastAPI 格式 |
+| 身份 | STUDENT、TEACHER、STAFF；多身份由会话选定且校验归属 |
+| 错误 | 所有 HTTP 错误 → detail.code/message/request_id；422 附安全 fields；响应头 X-Request-ID |
 | 真实来源 | d_resource_blocks，唯一 (source_module, source_id) |
 | 汇总 | 按需生成、按房间 resource_version 失效；不是最终冲突依据 |
 
@@ -130,7 +132,7 @@ def create_reservation(body, session, actor):
 - 验收一个维修单只撤销一个来源；有其他维修/M2 占用时仍不可预约。
 - 所有变更在同一房间行锁下写入，房间锁之前不先锁业务单。
 - 所有来源和启停变更增加 resource_version；汇总是查询缓存，提交不依赖 AVAILABLE。
-- d_user_identities、d_rooms 等字段的直接维护不能绕过公共规则；本轮资源由种子初始化，完整编辑 API 后续实现。
+- d_user_identities、d_rooms 等字段的维护不能绕过公共规则；T04 已增加受控资源编辑 API，冲突变更返回409，免责业务仍待后续实现。
 
 ### D 站内通知公共服务（本地提案，待团队评审）
 
@@ -156,4 +158,12 @@ def create_reservation(body, session, actor):
 
 已配置的测试覆盖认证、权限、事务回滚、真实房间行锁、并发预约、M2/M3 占用、幂等、来源恢复、汇总重算、MySQL 外键和迁移往返。前端执行 TypeScript 检查与生产构建。
 
-M3 已在公共层之上实现工单/评价/升级表、十个 M3 API、真实前端、维修来源联动，以及自动超时任务与站内通知，见 [M3 后端](m3-backend.md)、[前端](m3-frontend.md)与 [扩展说明](m3-extensions.md)。仍待完成：M1/M2 业务主表与 API、附件、细粒度范围、撤销/转派/重开、完整独立业务事件流、外部通知、真实模块间网络集成与跨进程可靠补偿、自动部署及生产发布。现有同进程资源函数及同库站内通知不等于完成课程要求的跨模块网络链路。
+M3 已在公共层之上实现工单/评价/升级表、十个 M3 API、真实前端、维修来源联动，以及自动超时任务与站内通知，见 [M3 后端](m3-backend.md)、[前端](m3-frontend.md)与 [扩展说明](m3-extensions.md)。仍待完成：M1 业务 API、M2 业务主表与 API、附件、细粒度范围、撤销/转派/重开、完整独立业务事件流、外部通知、真实模块间网络集成与跨进程可靠补偿、自动部署及生产发布。现有同进程资源函数及同库站内通知不等于完成课程要求的跨模块网络链路。
+
+## 10. T01–T05 会话和授权升级
+
+Cookie 登录返回 authenticated，不返回原 access_token；前端从统一会话恢复当前用户，修改请求附会话绑定 CSRF。旧 JWT HTTP 凭据升级后失效，所有调用方重新登录。测试用的 token_headers 创建真实数据库会话，不再签发虚构有效 JWT。
+
+Principal.require/has 仅对全局授权成立；房间范围使用 require_for_room/can_for_room；SQL 用 room_scope_predicate，不能把独立角色的动作和范围拼接。旧 M3 只支持原全局业务角色；新局部授权保守拒绝，完整适配单列后续任务。服务主体与用户会话分离，使用 require_service(module) 或 authenticate_service 验证模块与房间。
+
+0006 来源写入生成占用明细并精确释放；历史逻辑 M1 来源允许空 typed 业务关联，不创造预约事实。现有 D 单服务事务不等于真实跨模块网络验收。

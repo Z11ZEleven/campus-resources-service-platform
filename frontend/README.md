@@ -31,7 +31,7 @@ npm run build
 ## 集成入口
 
 - src/api/request.ts：唯一 Axios 实例与错误解析。
-- src/stores/auth.ts：当前用户、登录/退出；Token 只放内存，刷新后重新登录。
+- src/stores/auth.ts：当前用户、登录/退出；使用 HttpOnly Cookie 会话，刷新时从 /auth/me 恢复；退出撤销服务端会话，支持有效身份选择。
 - src/router/index.ts：将模块路由添加到 catch-all 前。
 - src/api/resources.ts：公共资源类型与查询。
 - src/views/ResourcesView.vue：真实后端数据示例，没有模拟预约按钮。
@@ -50,3 +50,11 @@ npm run build
 M3 入口为 `/m3/work-orders`，详情为 `/m3/work-orders/:id`，通知中心为 `/notifications`。操作按当前角色、归属及状态显示；仅原报修人可在完成后评分一次。升级保持工单状态和维修限制不变，物业管理员可手动补扫；导航自动查询未读数，通知列表需刷新查看新消息。
 
 使用步骤、错误恢复和已知完工请求限制见 [M3 前端说明](../docs/m3-frontend.md)，规则与完整验证见 [超时/评价/通知扩展](../docs/m3-extensions.md)。新增公共 D 通知为本次用户确认的本地实现提案，待团队评审。站内收件箱不包含邮件、微信或桌面推送；附件、细粒度管理范围、撤销/转派/重开、真实模块间网络集成和跨进程可靠补偿仍未实现。
+
+## M1 T01–T05 基础入口
+
+具有 resources:manage 权限时导航显示“资源维护”（/admin/resources），后端仍按该条授权的房间/建筑/院系范围检查。支持建筑、教室、座位、固定/移动插座、软启停和周期/特殊开放时段。有效来源与破坏性变更冲突返回409，不覆盖历史预约。
+
+浏览器修改请求自动从 campus_csrf 读取会话绑定校验值；请求客户端不保存可重放会话 Token。开发代理保留原始 Host，生产须同源反向代理 /api 并启用 Secure Cookie。
+
+M1 表模型不代表搜索预约、签到等业务页面已交付；本轮范围及待定事项见 [基础契约](../docs/m1/contracts.md)。
