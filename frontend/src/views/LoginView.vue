@@ -27,7 +27,7 @@ async function submit() {
   <section class="login-card">
     <div class="eyebrow">CAMPUS RESOURCES</div>
     <h1>登录校园资源平台</h1>
-    <p class="muted">使用初始化脚本生成的测试账号。刷新页面后需要重新登录。</p>
+    <p class="muted">使用初始化脚本生成的测试账号。刷新页面后会恢复有效会话。</p>
     <form @submit.prevent="submit">
       <label>用户名<input v-model="username" autocomplete="username" required maxlength="64" /></label>
       <label>密码<input v-model="password" type="password" autocomplete="current-password" required maxlength="256" /></label>

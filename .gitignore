@@ -28,6 +28,8 @@ coverage/
 *.key
 
 # Local runtime data
+.playwright-cli/
+/output/playwright/
 *.log
 *.sqlite
 *.sqlite3

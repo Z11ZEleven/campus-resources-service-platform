@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,6 +22,9 @@ class Settings(BaseSettings):
     jwt_issuer: str = "campus-resources"
     jwt_audience: str = "campus-web"
     access_token_minutes: int = Field(default=60, ge=1, le=1440)
+    session_minutes: int = Field(default=60, ge=1, le=1440)
+    session_cookie_secure: bool = False
+    session_cookie_samesite: Literal["lax", "strict"] = "lax"
     booking_max_hours: int = Field(default=4, ge=1, le=24)
     booking_window_days: int = Field(default=7, ge=1, le=31)
     m3_reported_timeout_hours: int = Field(default=24, ge=1, le=8760)

@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_session_factory
 from app.modules.auth.models import User, UserIdentity, UserRole
+from app.modules.auth.permissions import seed_role_permissions
 from app.modules.auth.security import passwords
-from app.modules.resources.models import Room, Seat
+from app.modules.resources.models import Building, Room, Seat
 
 ACCOUNTS = (
     ("student", "演示学生", "STUDENT", "DEMO-S001", "CS", ("USER",)),
@@ -25,6 +26,7 @@ ACCOUNTS = (
 def seed(session: Session, password: str):
     if len(password) < 12:
         raise ValueError("SEED_USER_PASSWORD must contain at least 12 characters")
+    seed_role_permissions(session)
     for username, name, kind, number, department, roles in ACCOUNTS:
         user = session.scalar(select(User).where(User.username == username))
         if user is not None:
@@ -48,6 +50,13 @@ def seed(session: Session, password: str):
             )
         )
         session.add_all(UserRole(user_id=user.id, role_code=role) for role in roles)
+    building = session.scalar(select(Building).where(Building.code == "DEMO-B1"))
+    if building is None:
+        building = session.scalar(select(Building).where(Building.name == "演示教学楼"))
+    if building is None:
+        building = Building(code="DEMO-B1", name="演示教学楼")
+        session.add(building)
+        session.flush()
     for code, name, department in (
         ("B1-101", "公共自习室", None),
         ("B1-102", "EE 院系自习室", "EE"),
@@ -58,6 +67,7 @@ def seed(session: Session, password: str):
                 code=code,
                 name=name,
                 building_name="演示教学楼",
+                building_id=building.id,
                 capacity=3,
                 department_code=department,
                 open_time=time(8),

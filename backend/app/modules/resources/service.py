@@ -34,8 +34,9 @@ def lock_room(session: Session, room_id: int) -> Room:
 
 
 def can_read_room(actor: Principal, room: Room) -> bool:
-    return actor.has("resources:manage") or (
-        bool(room.is_active)
+    return actor.can_for_room("resources:manage", room) or (
+        not actor.has_any("resources:manage")
+        and bool(room.is_active)
         and (room.department_code is None or room.department_code == actor.department_code)
     )
 
@@ -58,7 +59,7 @@ def validate_day(day: date):
         raise DomainError(422, "OUTSIDE_WINDOW", "日期超出可预约窗口")
 
 
-def validate_period(room: Room, start_at: datetime, end_at: datetime, *, m1: bool):
+def validate_period(room: Room, start_at: datetime, end_at: datetime, *, m1: bool, session=None):
     try:
         start, end = to_utc(start_at), to_utc(end_at)
     except ValueError as exc:
@@ -75,10 +76,17 @@ def validate_period(room: Room, start_at: datetime, end_at: datetime, *, m1: boo
     validate_day(local_start.date())
     if local_start.date() != local_end.date():
         raise DomainError(422, "SAME_DAY_REQUIRED", "本轮不支持跨日预约")
-    if local_start.time().replace(tzinfo=None) < room.open_time or (
-        local_end.time().replace(tzinfo=None) > room.close_time
-    ):
-        raise conflict("时段不在教室开放时间内")
+    from app.modules.resources.opening import is_open
+
+    if session is not None:
+        opened = is_open(session, room, start, end)
+    else:
+        opened = (
+            local_start.time().replace(tzinfo=None) >= room.open_time
+            and local_end.time().replace(tzinfo=None) <= room.close_time
+        )
+    if not opened:
+        raise conflict("时段不在教室完整开放区间内")
     if m1 and end - start > timedelta(hours=get_settings().booking_max_hours):
         raise DomainError(422, "TOO_LONG", "超出个人预约最长时长")
     return start, end
@@ -132,6 +140,9 @@ def _insert(session, room, *, module, source_id, seat_id, start, end, actor):
     session.add(row)
     room.resource_version += 1
     session.flush()
+    from app.modules.resources.allocations import materialize_source
+
+    materialize_source(session, row)
     record_operation(
         session,
         module=module,
@@ -164,7 +175,7 @@ def reserve_seat(
     if reused:
         return reused
     check_booking_eligibility(actor, room)
-    validate_period(room, start_at, end_at, m1=True)
+    validate_period(room, start_at, end_at, m1=True, session=session)
     seat = session.get(Seat, seat_id, populate_existing=True)
     if seat is None or seat.room_id != room.id:
         raise not_found()
@@ -207,7 +218,7 @@ def occupy_room(
     if applicant.identity_type != "TEACHER":
         raise forbidden()
     check_booking_eligibility(applicant, room)
-    validate_period(room, start_at, end_at, m1=False)
+    validate_period(room, start_at, end_at, m1=False, session=session)
     if _overlap(session, room.id, start, end):
         raise conflict("整教室时段与已有预约或维修冲突")
     return _insert(
@@ -266,6 +277,9 @@ def release_source(
     if row.status == "RELEASED":
         return row
     row.status, row.released_at = "RELEASED", utcnow()
+    from app.modules.resources.allocations import release_allocations
+
+    release_allocations(session, row)
     room.resource_version += 1
     session.flush()
     record_operation(
@@ -285,7 +299,7 @@ def _day_bounds(day):
     return start, start + timedelta(days=1)
 
 
-def _slot_state(room, seat, slot_start, matches):
+def _slot_state(room, seat, slot_start, matches, opened=None):
     local_start = as_utc(slot_start).astimezone(BUSINESS_TZ)
     local_end = local_start + timedelta(hours=1)
     if not room.is_active or not seat.is_active:
@@ -293,8 +307,12 @@ def _slot_state(room, seat, slot_start, matches):
     maintenance = [row for row in matches if row.source_module == "M3"]
     if maintenance:
         return "MAINTENANCE", min(maintenance, key=lambda row: row.id)
-    if local_start.time() < room.open_time or (
-        local_end.date() != local_start.date() or local_end.time() > room.close_time
+    if opened is False or (
+        opened is None
+        and (
+            local_start.time() < room.open_time
+            or (local_end.date() != local_start.date() or local_end.time() > room.close_time)
+        )
     ):
         return "CLOSED", None
     for module, status in (("M2", "ROOM_BOOKED"), ("M1", "RESERVED")):
@@ -335,6 +353,9 @@ def availability(session: Session, *, room_id: int, day: date, actor: Principal)
                 )
             )
         )
+        from app.modules.resources.opening import covers, intervals
+
+        opened_intervals = intervals(session, room, start, end)
         existing = {(row.seat_id, row.slot_start): row for row in rows}
         rows = []
         computed_at = utcnow()
@@ -350,7 +371,13 @@ def availability(session: Session, *, room_id: int, day: date, actor: Principal)
                         and (row.end_at is None or row.end_at > slot)
                     )
                 ]
-                state, primary = _slot_state(room, seat, slot, matches)
+                state, primary = _slot_state(
+                    room,
+                    seat,
+                    slot,
+                    matches,
+                    covers(opened_intervals, slot, slot + timedelta(hours=1)),
+                )
                 row = existing.get((seat.id, slot))
                 if row is None:
                     row = SeatStatusSummary(seat_id=seat.id, slot_start=slot)
@@ -367,9 +394,13 @@ def availability(session: Session, *, room_id: int, day: date, actor: Principal)
 
 def set_room_active(session: Session, *, room_id: int, is_active: bool, actor: Principal):
     """Internal management hook: bump cache version under the same lock."""
-    actor.require("resources:manage")
     room = lock_room(session, room_id)
+    actor.require_for_room("resources:manage", room)
     if bool(room.is_active) != is_active:
+        if not is_active:
+            from app.modules.resources.management import reject_sources
+
+            reject_sources(session, room_id)
         room.is_active = is_active
         room.resource_version += 1
         record_operation(
@@ -391,12 +422,16 @@ def set_seat_active(
     is_active: bool,
     actor: Principal,
 ):
-    actor.require("resources:manage")
     room = lock_room(session, room_id)
+    actor.require_for_room("resources:manage", room)
     seat = session.get(Seat, seat_id, populate_existing=True)
     if seat is None or seat.room_id != room.id:
         raise not_found()
     if bool(seat.is_active) != is_active:
+        if not is_active:
+            from app.modules.resources.management import reject_sources
+
+            reject_sources(session, room_id, seat_id)
         seat.is_active = is_active
         room.resource_version += 1
         record_operation(
@@ -408,3 +443,13 @@ def set_seat_active(
             note=str(is_active),
         )
     return seat
+
+
+# Public management contract: implementations remain in the same D resources
+# domain; callers never write another module's tables.
+from app.modules.resources.management import (  # noqa: E402,F401
+    replace_schedule,
+    save_building,
+    save_room,
+    save_seat,
+)

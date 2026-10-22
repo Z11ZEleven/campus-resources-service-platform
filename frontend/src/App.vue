@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { useNotificationsStore } from './stores/notifications'
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 const notifications = useNotificationsStore()
 const notificationLabel = computed(() => notifications.countError
   ? '通知中心，未读数量暂时无法更新'
   : notifications.countLoaded ? `通知中心，${notifications.unreadCount} 条未读` : '通知中心')
-function logout() { auth.clear(); void router.replace('/login') }
+async function logout() { await auth.logout(); await router.replace('/login') }
 function sessionExpired() {
+  if (!auth.user) return
   const destination = router.currentRoute.value.fullPath
   auth.clear()
   void router.replace({ path: '/login', query: { redirect: destination } })
@@ -26,6 +28,7 @@ onUnmounted(() => { window.removeEventListener('auth-expired', sessionExpired); 
       <router-link class="brand" :to="auth.user ? '/resources' : '/login'"><span class="brand-mark" aria-hidden="true">校</span><strong>校园资源</strong></router-link>
       <nav v-if="auth.user" class="primary-nav" aria-label="主导航">
         <router-link to="/resources">空间资源</router-link>
+        <router-link v-if="auth.user.permissions.includes('resources:manage')" to="/admin/resources">资源维护</router-link>
         <router-link to="/m3/work-orders">报修工单</router-link>
         <router-link to="/notifications" :aria-label="notificationLabel" :title="notificationLabel">
           通知中心<span v-if="notifications.unreadCount > 0" class="notification-badge" aria-hidden="true">{{ notifications.unreadCount > 99 ? '99+' : notifications.unreadCount }}</span>
@@ -34,10 +37,13 @@ onUnmounted(() => { window.removeEventListener('auth-expired', sessionExpired); 
       </nav>
       <div v-if="auth.user" class="user-info">
         <span>{{ auth.user.display_name }}<span class="muted user-department"> · {{ auth.user.department_code }}</span></span>
+        <el-select v-if="auth.identities.length > 1" :model-value="auth.user.identity_id" aria-label="当前身份" style="width: 150px" @change="auth.selectIdentity">
+          <el-option v-for="identity in auth.identities" :key="identity.id" :value="identity.id" :label="`${identity.identity_type} · ${identity.department_code}`" />
+        </el-select>
         <el-button size="small" @click="logout">退出</el-button>
       </div>
     </header>
-    <main><router-view :key="auth.user?.id ?? 'guest'" /></main>
+    <main><router-view v-if="auth.user || route.path === '/login'" :key="auth.user?.identity_id ?? 'guest'" /></main>
   </div>
 </template>
 

@@ -199,7 +199,20 @@ def test_summary_invalidates_and_disabled_priority(factory, data, client):
     )
     assert target["status"] == "RESERVED" and not target["bookable"]
     assert target["resource_version"] == 1
+    # Maintenance changes cannot silently interrupt the active reservation.
+    with pytest.raises(DomainError) as result, factory() as s, s.begin():
+        set_seat_active(
+            s,
+            room_id=data["room"],
+            seat_id=data["seats"][0],
+            is_active=False,
+            actor=data["users"]["admin"],
+        )
+    assert result.value.status == 409
     with factory() as s, s.begin():
+        release_source(
+            s, room_id=data["room"], source_module="M1", source_id=1, actor=data["users"]["student"]
+        )
         set_seat_active(
             s,
             room_id=data["room"],

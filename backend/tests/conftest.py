@@ -83,11 +83,12 @@ def data(factory, password_hash):
     from datetime import time
 
     from app.modules.auth.models import User, UserIdentity, UserRole
-    from app.modules.auth.permissions import load_principal
+    from app.modules.auth.permissions import load_principal, seed_role_permissions
     from app.modules.resources.models import Room, Seat
 
     principals = {}
     with factory() as session, session.begin():
+        seed_role_permissions(session)
         specs = (
             ("student", "STUDENT", "CS", ["USER"]),
             ("other", "STUDENT", "EE", ["USER"]),
@@ -188,6 +189,9 @@ def client(data):
 
 
 def token_headers(principal):
-    from app.modules.auth.security import create_token
+    from app.core.database import get_session_factory
+    from app.modules.auth.sessions import issue_session
 
-    return {"Authorization": "Bearer " + create_token(principal.user_id)}
+    with get_session_factory()() as session, session.begin():
+        token, _, _ = issue_session(session, principal.user_id, principal.identity_id)
+    return {"Authorization": "Bearer " + token}

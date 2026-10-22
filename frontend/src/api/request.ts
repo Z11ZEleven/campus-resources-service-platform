@@ -1,16 +1,15 @@
 import axios from 'axios'
 
-let token = ''
-export function setAccessToken(value: string) { token = value }
-
-export const request = axios.create({ baseURL: '/api/v1', timeout: 10000 })
+export const request = axios.create({ baseURL: '/api/v1', timeout: 10000, withCredentials: true })
 request.interceptors.request.use(config => {
-  if (token) config.headers.Authorization = `Bearer ${token}`
+  if (!['get', 'head', 'options'].includes((config.method ?? 'get').toLowerCase())) {
+    const csrf = document.cookie.split('; ').find(value => value.startsWith('campus_csrf='))?.split('=')[1]
+    if (csrf) config.headers['X-CSRF-Token'] = decodeURIComponent(csrf)
+  }
   return config
 })
 request.interceptors.response.use(response => response, error => {
-  if (error.response?.status === 401 && token) {
-    token = ''
+  if (error.response?.status === 401) {
     window.dispatchEvent(new Event('auth-expired'))
   }
   return Promise.reject(error)

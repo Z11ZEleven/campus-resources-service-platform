@@ -401,11 +401,16 @@ def test_create_requires_active_identity_user_role_and_accessible_room(client, d
     assert create(client, data, reporter="property").status_code == 403
     assert create(client, data, room_id=str(data["private_room"])).status_code == 404
     assert create(client, data, room_id="18446744073709551615").status_code == 404
+    headers = token_headers(data["users"]["student"])
     with factory() as session, session.begin():
         session.scalar(select(UserIdentity).where(
             UserIdentity.user_id == data["users"]["student"].user_id
         )).is_active = False
-    assert create(client, data).status_code == 401
+    # A session issued before identity revocation must fail on its next request.
+    assert client.post(BASE, headers=headers, json={
+        "room_id": str(data["room"]), "title": "身份撤销测试", "description": "虚构故障",
+        "category": "OTHER", "request_key": str(uuid4()),
+    }).status_code == 401
 
 
 @pytest.mark.parametrize("phase", ["start", "acceptance"])
@@ -421,11 +426,14 @@ def test_fault_after_resource_change_rolls_back_entire_http_transaction(client, 
         raise RuntimeError("injected failure after the real D resource mutation")
 
     monkeypatch.setattr(service, "record_operation", fail_after_resource_change)
-    with pytest.raises(RuntimeError, match="injected failure"):
-        if phase == "start":
-            action(client, data, order["id"], "start", actor="repairer")
-        else:
-            accept(client, data, order)
+    if phase == "start":
+        response = action(client, data, order["id"], "start", actor="repairer")
+    else:
+        response = accept(client, data, order)
+    assert response.status_code == 500
+    assert response.json()["detail"]["code"] == "INTERNAL_ERROR"
+    assert response.json()["detail"]["request_id"] == response.headers["X-Request-ID"]
+    assert "injected failure" not in response.text
     with factory() as session:
         row = work_order_row(session, order["id"])
         assert row["status"] == order["status"]

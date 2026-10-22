@@ -16,8 +16,8 @@ def test_login_me_and_no_password_leak(client, data):
         },
     )
     assert result.status_code == 200
-    headers = {"Authorization": "Bearer " + result.json()["access_token"]}
-    me = client.get("/api/v1/auth/me", headers=headers)
+    assert result.json() == {"authenticated": True}
+    me = client.get("/api/v1/auth/me")
     assert me.status_code == 200
     assert me.json()["id"] == str(data["users"]["student"].user_id)
     assert me.json()["roles"] == ["USER"]
