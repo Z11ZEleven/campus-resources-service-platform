@@ -16,7 +16,7 @@ def test_schema_matches_models_and_empty_database_replay(factory, mysql_engine):
     }
     assert set(inspect(mysql_engine).get_table_names()) == expected_public | {
         "m3_work_orders", "m3_work_order_ratings", "m3_work_order_escalations",
-        "d_notifications", "alembic_version"
+        "d_notifications", "m2_applications", "alembic_version"
     }
     with mysql_engine.begin() as connection:
         connection.execute(text(
