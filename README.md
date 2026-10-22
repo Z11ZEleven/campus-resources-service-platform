@@ -10,6 +10,8 @@
 
 开始运行请看 [后端启动说明](backend/README.md)、[公共前端](frontend/README.md) 和 [模块接入指南](docs/public-layer-integration.md)。
 
+Windows 新设备可使用 [本地启动脚本](docs/local-start.md)：首次执行 `start.cmd --setup`，按提示配置本机 `.env` 和 MySQL；日常执行 `start.cmd` 同时启动前后端。
+
 M3 的接口、权限、状态与测试见 [M3 后端接入说明](docs/m3-backend.md)。
 
 ## 业务模块
