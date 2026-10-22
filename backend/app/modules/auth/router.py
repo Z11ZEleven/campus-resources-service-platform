@@ -42,7 +42,7 @@ def users(
     session: Db,
     user: CurrentUser,
     role_code: str | None = Query(
-        default=None, pattern="^(USER|ROOM_ADMIN|PROPERTY_ADMIN|REPAIRER|SYS_ADMIN)$"
+        default=None, pattern="^(USER|ROOM_ADMIN|PROPERTY_ADMIN|REPAIRER|SYS_ADMIN|DEPT_ADMIN|CAMPUS_ADMIN)$"
     ),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),

@@ -22,6 +22,7 @@ class Room(Base):
     __table_args__ = (
         CheckConstraint("capacity > 0", name="ck_room_capacity"),
         CheckConstraint("open_time < close_time", name="ck_room_hours"),
+        CheckConstraint("booking_mode IN ('SEAT','WHOLE_ROOM')", name="ck_room_booking_mode"),
         OPTIONS,
     )
     id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True)
@@ -30,6 +31,8 @@ class Room(Base):
     building_name: Mapped[str] = mapped_column(String(100))
     capacity: Mapped[int] = mapped_column(INTEGER(unsigned=True))
     department_code: Mapped[str | None] = mapped_column(String(32))
+    booking_mode: Mapped[str] = mapped_column(String(16), default="SEAT", server_default="SEAT")
+    campus_code: Mapped[str] = mapped_column(String(32), default="MAIN", server_default="MAIN")
     open_time: Mapped[time] = mapped_column(TIME)
     close_time: Mapped[time] = mapped_column(TIME)
     is_active: Mapped[bool] = mapped_column(TINYINT(1), default=True, server_default="1")

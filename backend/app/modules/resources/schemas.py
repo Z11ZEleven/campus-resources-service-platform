@@ -10,6 +10,8 @@ class RoomView(Output):
     building_name: str
     capacity: int
     department_code: str | None
+    booking_mode: str
+    campus_code: str
     open_time: time
     close_time: time
     is_active: bool

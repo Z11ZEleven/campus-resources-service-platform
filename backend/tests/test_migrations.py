@@ -16,7 +16,8 @@ def test_schema_matches_models_and_empty_database_replay(factory, mysql_engine):
     }
     assert set(inspect(mysql_engine).get_table_names()) == expected_public | {
         "m3_work_orders", "m3_work_order_ratings", "m3_work_order_escalations",
-        "d_notifications", "alembic_version"
+        "d_notifications", "d_role_scopes", "d_resource_commands", "m2_applications",
+        "m2_approval_steps", "m2_application_events", "m2_resource_jobs", "alembic_version"
     }
     with mysql_engine.begin() as connection:
         connection.execute(text(
@@ -31,11 +32,11 @@ def test_schema_matches_models_and_empty_database_replay(factory, mysql_engine):
     command.upgrade(cfg, "head")
     command.check(cfg)
     command.downgrade(cfg, "base")
-    assert not any(name.startswith(("d_", "m3_")) for name in inspect(mysql_engine).get_table_names())
+    assert not any(name.startswith(("d_", "m3_", "m2_")) for name in inspect(mysql_engine).get_table_names())
     command.upgrade(cfg, "head")
     assert (
         len([name for name in inspect(mysql_engine).get_table_names() if name.startswith("d_")])
-        == 9
+        == 11
     )
     assert "m3_work_orders" in inspect(mysql_engine).get_table_names()
     command.check(cfg)
@@ -48,7 +49,7 @@ def test_datetime_columns_preserve_milliseconds(mysql_engine):
     columns = [
         column
         for name in inspector.get_table_names()
-        if name.startswith(("d_", "m3_"))
+        if name.startswith(("d_", "m3_", "m2_"))
         for column in inspector.get_columns(name)
     ]
     temporal = [column for column in columns if isinstance(column["type"], DATETIME)]

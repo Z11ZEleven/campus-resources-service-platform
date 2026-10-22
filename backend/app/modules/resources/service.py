@@ -84,6 +84,29 @@ def validate_period(room: Room, start_at: datetime, end_at: datetime, *, m1: boo
     return start, end
 
 
+def validate_whole_room_period(room, start_at, end_at, *, minimum_days=0):
+    """整室时段不沿用 M1 的7天窗口；提交时另传提前2个自然日。"""
+    try:
+        start, end = to_utc(start_at), to_utc(end_at)
+    except ValueError as exc:
+        raise DomainError(422, "TIMEZONE_REQUIRED", "时间必须包含时区") from exc
+    local_start, local_end = start_at.astimezone(BUSINESS_TZ), end_at.astimezone(BUSINESS_TZ)
+    if any(value.minute or value.second or value.microsecond for value in (local_start, local_end)):
+        raise DomainError(422, "WHOLE_HOUR_REQUIRED", "使用时间必须为北京时间整点")
+    if start <= utcnow() or not timedelta(hours=1) <= end-start <= timedelta(hours=4):
+        raise DomainError(422, "INVALID_PERIOD", "请申请未来1至4小时的时段")
+    if local_start.date() != local_end.date():
+        raise DomainError(422, "SAME_DAY_REQUIRED", "申请不得跨自然日")
+    if local_start.date() < business_date() + timedelta(days=minimum_days):
+        raise DomainError(422, "ADVANCE_REQUIRED", "至少提前两个北京时间自然日申请")
+    if not (8 <= local_start.hour < local_end.hour <= 22) or (
+        local_start.time().replace(tzinfo=None) < room.open_time
+        or local_end.time().replace(tzinfo=None) > room.close_time
+    ):
+        raise DomainError(422, "OUTSIDE_HOURS", "时段须在08:00至22:00及教室开放时间内")
+    return start, end
+
+
 def _existing(session, module, source_id):
     return session.scalar(
         select(ResourceBlock)
@@ -164,6 +187,8 @@ def reserve_seat(
     if reused:
         return reused
     check_booking_eligibility(actor, room)
+    if room.booking_mode != "SEAT":
+        raise conflict("该教室仅接受整室申请，不接受个人座位预约")
     validate_period(room, start_at, end_at, m1=True)
     seat = session.get(Seat, seat_id, populate_existing=True)
     if seat is None or seat.room_id != room.id:
@@ -203,11 +228,18 @@ def occupy_room(
     if reused:
         return reused
     applicant = load_principal(session, applicant_id)
-    applicant.require("m2:create")
-    if applicant.identity_type != "TEACHER":
-        raise forbidden()
+    if room.booking_mode == "WHOLE_ROOM":
+        from app.modules.auth.scopes import approval_requirement, require_scope
+
+        require_scope(session, actor, approval_requirement(room, 2))
+        validate_whole_room_period(room, start_at, end_at)
+    else:
+        # 保留现有公开函数对历史 SEAT 资源的行为；新 M2 网络入口只接受 WHOLE_ROOM。
+        applicant.require("m2:create")
+        if applicant.identity_type != "TEACHER":
+            raise forbidden()
+        validate_period(room, start_at, end_at, m1=False)
     check_booking_eligibility(applicant, room)
-    validate_period(room, start_at, end_at, m1=False)
     if _overlap(session, room.id, start, end):
         raise conflict("整教室时段与已有预约或维修冲突")
     return _insert(
@@ -285,6 +317,20 @@ def _day_bounds(day):
     return start, start + timedelta(days=1)
 
 
+def expire_m2_source(session: Session, *, room_id: int, source_id: int):
+    """仅供已认证 D 命令服务在审批截止后补偿；不对终端用户暴露。"""
+    room = lock_room(session, room_id)
+    row = _existing(session, "M2", source_id)
+    if row is None or row.room_id != room_id or row.status == "RELEASED":
+        return row
+    row.status, row.released_at = "RELEASED", utcnow()
+    room.resource_version += 1
+    record_operation(session, module="M2", business_id=source_id, action="EXPIRE_RESOURCE",
+                     actor_id=None, actor_type="SYSTEM", from_status="ACTIVE", to_status="RELEASED")
+    session.flush()
+    return row
+
+
 def _slot_state(room, seat, slot_start, matches):
     local_start = as_utc(slot_start).astimezone(BUSINESS_TZ)
     local_end = local_start + timedelta(hours=1)
@@ -305,8 +351,11 @@ def _slot_state(room, seat, slot_start, matches):
 
 
 def availability(session: Session, *, room_id: int, day: date, actor: Principal):
-    validate_day(day)
     room = lock_room(session, room_id)
+    if room.booking_mode == "SEAT":
+        validate_day(day)
+    elif day < business_date():
+        raise DomainError(422, "OUTSIDE_WINDOW", "查询日期不能早于今天")
     check_room_access(actor, room)
     start, end = _day_bounds(day)
     seats = list(session.scalars(select(Seat).where(Seat.room_id == room.id).order_by(Seat.id)))

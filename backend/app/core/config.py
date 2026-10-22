@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -29,6 +29,19 @@ class Settings(BaseSettings):
     m3_acceptance_timeout_hours: int = Field(default=24, ge=1, le=8760)
     m3_timeout_scan_interval_seconds: int = Field(default=60, ge=5, le=3600)
     m3_timeout_scan_enabled: bool = True
+    m2_worker_enabled: bool = True
+    m2_scan_interval_seconds: int = Field(default=5, ge=1, le=3600)
+    m2_reminder_hours: int = Field(default=24, ge=1, le=168)
+    m2_resource_base_url: AnyHttpUrl = "http://127.0.0.1:8001"
+    m2_resource_timeout_seconds: float = Field(default=5, ge=0.1, le=30)
+    resource_service_key: SecretStr | None = Field(default=None, min_length=32)
+
+    @field_validator("resource_service_key")
+    @classmethod
+    def service_key_is_not_placeholder(cls, value):
+        if value is not None and value.get_secret_value().startswith("REPLACE_"):
+            raise ValueError("Replace RESOURCE_SERVICE_KEY with an independent random key")
+        return value
 
     @field_validator("jwt_signing_key")
     @classmethod
