@@ -7,6 +7,8 @@ export interface Room {
   building_name: string
   capacity: number
   department_code: string | null
+  booking_mode?: 'SEAT' | 'WHOLE_ROOM'
+  campus_code?: string
   open_time: string
   close_time: string
   is_active: boolean

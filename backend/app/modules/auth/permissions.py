@@ -15,6 +15,8 @@ ROLE_PERMISSIONS = {
     "PROPERTY_ADMIN": frozenset({"m3:assign", "m3:accept", "users:read", "resources:manage"}),
     "REPAIRER": frozenset({"m3:start", "m3:complete"}),
     "SYS_ADMIN": frozenset({"users:read", "resources:manage"}),
+    "DEPT_ADMIN": frozenset({"m2:first-approve"}),
+    "CAMPUS_ADMIN": frozenset({"m2:first-approve"}),
 }
 
 

@@ -254,3 +254,9 @@ Idempotency-Key: m2-application:{application_id}:revision:{revision}
 8. 完成前端申请、进度、待办和审批页面。
 9. 补齐并发、故障注入、集成和端到端测试。
 10. 接入构建、迁移、测试环境部署及发布回退流程。
+
+## 13. 当前工程实现映射（本次提案）
+
+以上 UUID、TIMESTAMPTZ、点分 schema 名为技术无关候选。本次以既有 MySQL 契约映射为 BIGINT UNSIGNED、DATETIME(3) UTC 和 m2_ 前缀；JSON ID 为字符串。四张业务表及真实 D 网络应用、状态机、API、配置、恢复与验收追踪见 [M2 实现与运行](m2-implementation.md)。
+
+本轮不增加未确认的人数、联系方式或附件字段。临期默认24小时为可配置实现默认值，待团队评审。站内通知复用已有 D 同事务收件箱，资源网络任务单独持久化。截止时先撤销申请并记录 CANCEL_PENDING，D 的取消墓碑/按来源释放用于处理延迟创建和未知结果；该清理状态不允许恢复为批准。

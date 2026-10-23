@@ -16,13 +16,13 @@
 | 事务 | READ COMMITTED，先房间锁，再业务单锁 |
 | ID | 数据库 BIGINT UNSIGNED；Python int；HTTP JSON string |
 | 时间 | 输入 aware datetime，存 DATETIME(3) UTC，输出含 Z，页面北京时间 |
-| 角色 | USER、ROOM_ADMIN、PROPERTY_ADMIN、REPAIRER、SYS_ADMIN |
+| 角色 | USER、ROOM_ADMIN、PROPERTY_ADMIN、REPAIRER、SYS_ADMIN、DEPT_ADMIN、CAMPUS_ADMIN |
 | 身份 | STUDENT、TEACHER、STAFF；首轮每用户一个有效身份 |
 | 错误 | DomainError → detail.code、detail.message；422 字段校验保留 FastAPI 格式 |
 | 真实来源 | d_resource_blocks，唯一 (source_module, source_id) |
 | 汇总 | 按需生成、按房间 resource_version 失效；不是最终冲突依据 |
 
-学生预约还须有 USER；教师申请还须有 USER；ROOM_ADMIN 审批；REPAIRER 开始/完工；PROPERTY_ADMIN 派单/验收。SYS_ADMIN 不隐式拥有全部业务能力。
+学生个人预约还须有 USER；M2 所有有效身份可申请，审批须匹配层级角色及范围；ROOM_ADMIN 处理二级；REPAIRER 开始/完工；PROPERTY_ADMIN 派单/验收。SYS_ADMIN 不隐式拥有全部业务能力。
 
 ## 3. HTTP 接入
 
@@ -57,7 +57,7 @@ with get_session_factory()() as session, session.begin():
 |---|---|---|
 | lock_room | session、room_id | SELECT FOR UPDATE，先于业务单锁调用 |
 | reserve_seat | room_id、seat_id、reservation_id、start_at、end_at、actor | 学生个人占用、同座位/整室冲突检查 |
-| occupy_room | room_id、application_id、applicant_id、start_at、end_at、actor | 管理员批准整室占用；验证教师资格与院系，拒绝自审 |
+| occupy_room | room_id、application_id、applicant_id、start_at、end_at、actor | 管理员批准整室占用；WHOLE_ROOM 验证有效身份与二级范围，拒绝自审；SEAT 保留历史兼容规则 |
 | start_maintenance | room_id、work_order_id、actor | 指定维修人员的模块校验后添加维修限制 |
 | release_source | room_id、source_module、source_id、actor | 只释放本来源；模块校验合法取消/验收在前 |
 | availability | room_id、day、actor | 持房间锁校验可见性并按需重算汇总 |
@@ -156,4 +156,18 @@ def create_reservation(body, session, actor):
 
 已配置的测试覆盖认证、权限、事务回滚、真实房间行锁、并发预约、M2/M3 占用、幂等、来源恢复、汇总重算、MySQL 外键和迁移往返。前端执行 TypeScript 检查与生产构建。
 
-M3 已在公共层之上实现工单/评价/升级表、十个 M3 API、真实前端、维修来源联动，以及自动超时任务与站内通知，见 [M3 后端](m3-backend.md)、[前端](m3-frontend.md)与 [扩展说明](m3-extensions.md)。仍待完成：M1/M2 业务主表与 API、附件、细粒度范围、撤销/转派/重开、完整独立业务事件流、外部通知、真实模块间网络集成与跨进程可靠补偿、自动部署及生产发布。现有同进程资源函数及同库站内通知不等于完成课程要求的跨模块网络链路。
+M3 已在公共层之上实现工单/评价/升级表、十个 M3 API、真实前端、维修来源联动，以及自动超时任务与站内通知，见 [M3 后端](m3-backend.md)、[前端](m3-frontend.md)与 [扩展说明](m3-extensions.md)。M2 已按完整文档接入，见第10节。仍待完成：M1 业务主表与 API、附件、细粒度范围、撤销/转派/重开、完整独立业务事件流、外部通知、真实模块间网络集成与跨进程可靠补偿、自动部署及生产发布。原有同进程资源函数及同库站内通知不等于跨模块网络链路；本次 M2 使用独立 D 网络应用，见第10节。
+
+## 10. M2 两级审批与真实网络接入
+
+此处为本次 M2 完整需求的增量实现提案；旧首次迭代教师/单级口径只描述历史阶段，不作为新 M2 验收标准。
+
+M2 按 m2-requirements.md / m2-design.md 处理所有有效身份、互斥教室类型、两级角色和数据范围、提前两个自然日、1–4小时、超时撤销及站内通知。现为11张 D 表，新增范围/命令账本及整室分类字段见数据库统一契约第6节。完整运行和接口见 [M2 实现与运行](m2-implementation.md)。
+
+D 资源网络应用入口 app.resource_api:app；只能使用单独配置的 RESOURCE_SERVICE_KEY 进行服务鉴权，普通用户 JWT 无权调用。M2 创建命令 POST /api/v1/resource-commands/m2，查询 GET /api/v1/resource-commands/m2/{source_id}；超时取消 POST /api/v1/resource-commands/m2/cancel。服务请求携带不可变申请/教室/操作者/起止时段和审批截止，D 重验公开身份与范围，不读取 M2 私有表。
+
+取消仅在截止后使用原 payload，幂等返回确定结果；先写取消墓碑可阻止晚到创建。已有来源只释放本申请，不能解除 M3 或其他 M2 来源。
+
+M2 批准使用持久化任务、租约和重试，HTTP 阶段不持有事务。普通 M2 本地阶段只 flush，事务由路由编排/worker 边界统一提交；技术失败保留 RESOURCE_CONFIRMING，不伪装成批准或业务冲突。越过截止则 AUTO_CANCELLED，并显示尚未确认的资源清理状态直到 D 确认。
+
+D 通知服务现在也支持 M2 站内路径 /m2/applications/{id}，前端仍严格校验站内目标。通知和 M2 本地业务状态在同一数据库事务中提交。M3 原有通知与跳转保持支持。

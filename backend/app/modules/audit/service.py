@@ -12,7 +12,8 @@ def record_operation(
     module: str,
     business_id: int,
     action: str,
-    actor_id: int,
+    actor_id: int | None,
+    actor_type: str = "USER",
     from_status: str | None = None,
     to_status: str | None = None,
     note: str | None = None,
@@ -20,11 +21,14 @@ def record_operation(
     require_transaction(session)
     if module not in {"D", "M1", "M2", "M3"} or not 0 < len(action) <= 40:
         raise DomainError(422, "INVALID_LOG", "无效操作记录")
+    if actor_type not in {"USER", "SYSTEM"} or (actor_id is None and actor_type != "SYSTEM"):
+        raise DomainError(422, "INVALID_LOG", "无效的操作人")
     row = OperationLog(
         module=module,
         business_id=business_id,
         action=action,
         actor_id=actor_id,
+        actor_type=actor_type,
         from_status=from_status,
         to_status=to_status,
         note=note,

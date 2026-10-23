@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Query
 from sqlalchemy import func, or_, select
@@ -18,10 +19,13 @@ router = APIRouter(prefix="/api/v1/resources", tags=["公共资源"])
 def rooms(
     session: Db,
     user: CurrentUser,
+    booking_mode: Literal["SEAT", "WHOLE_ROOM"] | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
 ):
     query = select(Room).order_by(Room.id)
+    if booking_mode is not None:
+        query = query.where(Room.booking_mode == booking_mode)
     if not user.has("resources:manage"):
         query = query.where(
             Room.is_active.is_(True),
@@ -93,7 +97,7 @@ def room_availability(room_id: Id, date: date, session: Db, user: CurrentUser):
     now = utcnow()
     can_book = (
         user.has("m1:create")
-        and user.identity_type == "STUDENT"
+        and user.identity_type == "STUDENT" and room.booking_mode == "SEAT"
         and (room.department_code is None or room.department_code == user.department_code)
     )
     return AvailabilityView(

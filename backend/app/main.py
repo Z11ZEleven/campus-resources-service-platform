@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -11,6 +12,8 @@ from app.core.config import get_settings
 from app.core.database import get_engine
 from app.core.errors import DomainError
 from app.modules.auth.router import router as auth_router
+from app.modules.m2.router import router as m2_router
+from app.modules.m2.worker import m2_worker
 from app.modules.m3.router import router as m3_router
 from app.modules.m3.worker import timeout_worker
 from app.modules.notifications.router import router as notification_router
@@ -24,10 +27,13 @@ async def lifespan(_app):
     settings = get_settings()  # fail startup on missing/unsafe configuration
     stop = asyncio.Event()
     worker = asyncio.create_task(timeout_worker(stop)) if settings.m3_timeout_scan_enabled else None
+    m2_task = asyncio.create_task(m2_worker(stop)) if settings.m2_worker_enabled else None
     try:
         yield
     finally:
         stop.set()
+        if m2_task is not None:
+            await m2_task
         if worker is not None:
             await worker
         get_engine().dispose()
@@ -39,10 +45,13 @@ def create_app() -> FastAPI:
     @app.exception_handler(DomainError)
     async def domain_error(_request: Request, exc: DomainError):
         headers = {"WWW-Authenticate": "Bearer"} if exc.status == 401 else None
+        detail = {"code": exc.code, "message": exc.message}
+        if _request.url.path.startswith("/api/v1/m2/"):
+            detail["request_id"] = str(uuid4())
         return JSONResponse(
             status_code=exc.status,
             headers=headers,
-            content={"detail": {"code": exc.code, "message": exc.message}},
+            content={"detail": detail},
         )
 
     @app.exception_handler(IntegrityError)
@@ -68,6 +77,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(resource_router)
+    app.include_router(m2_router)
     app.include_router(m3_router)
     app.include_router(notification_router)
     return app

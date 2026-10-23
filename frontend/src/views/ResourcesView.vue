@@ -60,10 +60,10 @@ onMounted(async () => {
     <div class="eyebrow">PUBLIC RESOURCES</div>
     <h1>教室与座位状态</h1>
     <p class="muted">当前角色：{{ auth.user?.roles.join('、') }}。可见教室由后端身份与权限决定。</p>
-    <el-alert title="本页是公共层查询示例；预约、审批、报修页面由各模块接入。可用状态仍需提交时重新验证。" type="info" :closable="false" />
+    <el-alert title="本页展示公共资源状态；仅整室类型教室请进入整室申请。可用状态仍需在提交时重新验证。" type="info" :closable="false" />
     <div class="filters">
       <label>教室<el-select v-model="selected" style="width: 280px" @change="refresh">
-        <el-option v-for="room in options" :key="room.id" :label="room.name + ' · ' + room.code" :value="room.id" />
+        <el-option v-for="room in options" :key="room.id" :label="room.name + ' · ' + room.code + (room.booking_mode === 'WHOLE_ROOM' ? ' · 仅整室' : '')" :value="room.id" />
       </el-select></label>
       <label>日期（北京时间）<input v-model="date" type="date" @change="refresh" /></label>
       <el-button :loading="loading" :disabled="!selected" @click="refresh">刷新状态</el-button>

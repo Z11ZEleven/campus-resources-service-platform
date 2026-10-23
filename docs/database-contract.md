@@ -17,7 +17,7 @@
 
 ## 2. 公共层 D 表（当前实现）
 
-当前迁移已创建 9 张 D 表。`0001_public_layer` 创建前 8 张；`0003_m3_extensions` 增加 `d_notifications`。
+当前迁移已创建 11 张 D 表。`0001_public_layer` 创建前 8 张；`0003_m3_extensions` 增加 `d_notifications`；`0004_m2_two_stage` 增加 `d_role_scopes`、`d_resource_commands`，并扩展整室分类与系统审计。
 
 ### 2.1 用户、身份与角色
 
@@ -52,7 +52,7 @@
 |---|---|---:|---|
 | `id` | BIGINT UNSIGNED | 否 | 主键 |
 | `user_id` | BIGINT UNSIGNED | 否 | FK → `d_users.id` |
-| `role_code` | VARCHAR(32) | 否 | `USER` / `ROOM_ADMIN` / `PROPERTY_ADMIN` / `REPAIRER` / `SYS_ADMIN` |
+| `role_code` | VARCHAR(32) | 否 | `USER` / `ROOM_ADMIN` / `PROPERTY_ADMIN` / `REPAIRER` / `SYS_ADMIN` / `DEPT_ADMIN` / `CAMPUS_ADMIN` |
 | `created_at` | DATETIME(3) | 否 | UTC |
 
 唯一约束：`d_user_identities(user_id)`、`d_user_identities(identity_type, identity_no)`、`d_user_roles(user_id, role_code)`。
@@ -69,6 +69,8 @@
 | `building_name` | VARCHAR(100) | 否 | 建筑显示名称 |
 | `capacity` | INT UNSIGNED | 否 | 大于 0 |
 | `department_code` | VARCHAR(32) | 是 | 空表示全校；非空表示院系教室 |
+| `booking_mode` | VARCHAR(16) | 否 | SEAT / WHOLE_ROOM，既有行默认SEAT |
+| `campus_code` | VARCHAR(32) | 否 | 校级归属范围编码，默认MAIN |
 | `open_time` | TIME | 否 | 北京时间每日开放起点 |
 | `close_time` | TIME | 否 | 北京时间每日关闭时刻 |
 | `is_active` | TINYINT(1) | 否 | 行政启停 |
@@ -134,7 +136,8 @@
 | `module` | VARCHAR(8) | 否 | `D` / `M1` / `M2` / `M3` |
 | `business_id` | BIGINT UNSIGNED | 否 | 模块业务单 ID，逻辑关联 |
 | `action` | VARCHAR(40) | 否 | 固定操作事件名 |
-| `actor_id` | BIGINT UNSIGNED | 否 | FK → `d_users.id` |
+| `actor_id` | BIGINT UNSIGNED | 是 | FK → `d_users.id`；SYSTEM事件为空 |
+| `actor_type` | VARCHAR(16) | 否 | USER / SYSTEM，既有记录默认USER |
 | `from_status` | VARCHAR(32) | 是 | 原状态 |
 | `to_status` | VARCHAR(32) | 是 | 新状态 |
 | `note` | TEXT | 是 | 原因或意见，不存密钥/密码 |
@@ -171,7 +174,7 @@ M1、M2、M3 的业务表由模块负责人维护，但字段必须遵守以下�
 
 ## 4. 资源状态与事务规则
 
-1. 创建预约、批准整室申请、开始维修和验收释放，统一执行“锁教室 → 锁业务单 → 校验来源 → 修改业务单和来源 → 写日志/通知 → 提交”。
+1. 同进程创建预约、开始维修和验收释放，统一执行“锁教室 → 锁业务单 → 校验来源 → 修改业务单和来源 → 写日志/通知 → 提交”。M2 跨网络分段确认规则见第6节。
 2. 时间区间使用 `[start_at, end_at)`；判断重叠使用 `old.start_at < new.end_at AND new.start_at < old.end_at`。
 3. 状态显示优先级为 `DISABLED > MAINTENANCE > CLOSED > ROOM_BOOKED > RESERVED > AVAILABLE`；优先级只影响展示，不删除任何来源。
 4. `d_seat_status_summary` 不能作为预约成功的唯一依据；提交时必须重新查询真实来源。
@@ -187,4 +190,19 @@ M1、M2、M3 的业务表由模块负责人维护，但字段必须遵守以下�
 4. 添加迁移回放、外键、事务和接口行为测试；
 5. 在 PR 描述中列出受影响模块，由 D、M1、M2、M3 至少各一名成员评审。
 
-当前 M1/M2 业务表和接口尚未实现，本契约先冻结公共字段和模块引用关系，后续模块 PR 必须以本文件为准。
+M2 两级流程与必要 D 扩展见 [M2 实现与运行](m2-implementation.md)。公共变更仍需相关负责人评审；M1 业务尚未交付。
+
+## 6. M2 两级流程的公共扩展（本次实现提案）
+
+本次用户允许必要的 D 扩展，范围以 m2-requirements.md / m2-design.md 为准；不预填团队评审结论。
+
+- d_rooms 追加 booking_mode VARCHAR(16)，SEAT / WHOLE_ROOM，既有行默认 SEAT；追加 campus_code VARCHAR(32)，默认 MAIN。院系归属仍使用 department_code，空为校级。
+- d_role_scopes：id、user_id FK、role_code、scope_type、scope_key、is_active、created_at、updated_at；唯一(user_id,role_code,scope_type,scope_key)。审批必须同时具有当前有效角色和有效范围。DEPT_ADMIN 对应 DEPARTMENT，CAMPUS_ADMIN 对应 CAMPUS，ROOM_ADMIN 对应 ROOM。
+- d_operation_logs.actor_id 可空，追加 actor_type，默认 USER；系统动作使用 SYSTEM/null，不伪装成申请人或管理员。
+- d_resource_commands：仅用于 M2 的服务级命令账本。source_id 唯一，含 revision、room_id、applicant_id、actor_id、start_at、end_at、expires_at、status、resource_hold_id、reason_code、reason 及时间戳。状态 PROCESSING/SUCCEEDED/REJECTED/CANCELLED。
+- M2 网络请求使用稳定(source_module=M2,source_id,revision=1)，不同内容不能复用来源。命令与来源写入在 D 的一个事务内执行；D 不读取 M2 私有表。
+- 当前所有身份均可对符合院系限制的 WHOLE_ROOM 提交申请。新模式整室占用必须验证 ROOM_ADMIN 对目标教室的有效范围；原 SEAT 公开函数保留历史行为。
+- 公共教室查询默认继续返回全部可见类型，以保持 M3 报修地点查询；M1 应显式传 booking_mode=SEAT。无论列表如何展示，reserve_seat 在服务端拒绝 WHOLE_ROOM。
+- 普通同进程操作继续遵循同一 Session。M2 跨网络确认采用“本地持久化确认中/任务 → 结束事务 → D网络命令 → 本地确认结果”，禁止持有事务/房间锁等待网络。
+- 截止与网络竞态时 M2 持久化自动撤销与取消任务。D 截止后可按原请求写取消墓碑或只释放本 M2 来源；网络未恢复时 resource_sync_status=CANCEL_PENDING，不能假称资源清理完成。
+- 新增4张 M2 业务表：m2_applications、m2_approval_steps、m2_application_events、m2_resource_jobs；不改 M3 业务表或旧迁移。
