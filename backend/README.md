@@ -6,6 +6,8 @@ M3 接口、状态流转、权限与幂等语义见 [M3 后端](../docs/m3-backe
 
 ## 1. 准备与启动
 
+Windows 可在仓库根目录运行 `start.cmd --setup` 完成依赖安装、迁移和演示种子并启动前后端；后续运行 `start.cmd`。先创建本机 MySQL 数据库及用户，并填写本地配置，详见 [新设备启动说明](../docs/local-start.md)。以下为手动步骤。
+
 环境：Python 3.12、MySQL 8.4；前端另需 Node.js 22.12+。MySQL 可使用本机 Windows 服务或 Docker Compose，连接参数一致。
 
 在仓库根目录：

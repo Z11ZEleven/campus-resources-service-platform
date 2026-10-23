@@ -4,6 +4,8 @@ Vue 3 + TypeScript + Vite + Element Plus + Pinia + Axios。已提供登录、公
 
 ## 运行
 
+Windows 一并启动前后端可在仓库根目录运行 `start.cmd`；首次使用先运行 `start.cmd --setup`，按 [本地启动说明](../docs/local-start.md) 配置 MySQL 和 `.env`。以下为单独启动前端的方式。
+
 先按 backend/README.md 启动 MySQL、迁移、种子和后端，再在 frontend 目录：
 
 ```bash
