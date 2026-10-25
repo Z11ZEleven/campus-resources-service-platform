@@ -42,6 +42,8 @@ M2 有独立业务历史，也调用 D 公共审计。系统动作使用 actor_t
 
 ## 5. 运行
 
+Windows 推荐在仓库根目录执行 `start.cmd --setup`，之后使用 `start.cmd`。该入口会补齐独立服务密钥、迁移并初始化 M2 演示数据，依次启动 D 8002、主应用 8001、Vue 5173，并检查 D 鉴权和数据库。可用 `--resource-port`、`--backend-port`、`--frontend-port` 更改，调用地址自动同步。详见 [统一启动教程](../README.md)。以下为手动方式。
+
 先按后端 README 启动 MySQL、安装依赖并准备 .env。除了 MYSQL/JWT/SEED 密码，另生成独立 RESOURCE_SERVICE_KEY（至少32字符），在两个后端进程配置同一值：
 
 ```bash
@@ -54,9 +56,9 @@ cd backend
 
 ```bash
 # D 资源服务
-.venv/bin/python -m uvicorn app.resource_api:app --host 127.0.0.1 --port 8001
-# 主应用，M2_RESOURCE_BASE_URL=http://127.0.0.1:8001
-.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+.venv/bin/python -m uvicorn app.resource_api:app --host 127.0.0.1 --port 8002
+# 主应用，M2_RESOURCE_BASE_URL=http://127.0.0.1:8002
+.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
 
 在 frontend 运行 npm ci、npm run dev。端口变化使用已有 VITE_API_PROXY_TARGET 配置。停止各服务在相应终端按 Ctrl+C。主应用会停止 M2/M3 worker；已提交的资源任务保留，重启后继续。
@@ -66,7 +68,7 @@ cd backend
 | M2_WORKER_ENABLED | true，自动超时、提醒和资源恢复；测试中关闭自动并显式执行 |
 | M2_SCAN_INTERVAL_SECONDS | 5，扫描间隔 |
 | M2_REMINDER_HOURS | 24，临期提前量，待评审默认值 |
-| M2_RESOURCE_BASE_URL | http://127.0.0.1:8001，D 应用地址 |
+| M2_RESOURCE_BASE_URL | http://127.0.0.1:8002，D 应用地址；统一启动时由资源端口覆盖 |
 | M2_RESOURCE_TIMEOUT_SECONDS | 5，单次网络超时；失败保留待确认任务 |
 | RESOURCE_SERVICE_KEY | 无可用默认值；缺失或不匹配时不能取得批准结果 |
 
