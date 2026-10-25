@@ -14,6 +14,7 @@ def run_check(**overrides):
         JWT_SIGNING_KEY="test-signing-key-with-at-least-32-characters",
         MYSQL_PASSWORD="test-only-value",
         SEED_USER_PASSWORD="test-only-seed-password",
+        RESOURCE_SERVICE_KEY="test-only-independent-service-key-with-32-characters",
     )
     env.update(overrides)
     return subprocess.run(
@@ -49,4 +50,18 @@ def test_short_seed_password_stops_before_migration():
     result = run_check(SEED_USER_PASSWORD=secret)
     assert result.returncode == 1
     assert "SEED_USER_PASSWORD" in result.stdout
+    assert secret not in result.stdout + result.stderr
+
+
+def test_missing_resource_key_is_rejected_before_connecting_to_mysql():
+    result = run_check(RESOURCE_SERVICE_KEY="")
+    assert result.returncode == 1
+    assert "RESOURCE_SERVICE_KEY" in result.stdout
+
+
+def test_resource_key_cannot_equal_the_user_token_signing_key():
+    secret = "canary-shared-secret-that-must-not-be-printed"
+    result = run_check(RESOURCE_SERVICE_KEY=secret, JWT_SIGNING_KEY=secret)
+    assert result.returncode == 1
+    assert "RESOURCE_SERVICE_KEY" in result.stdout
     assert secret not in result.stdout + result.stderr

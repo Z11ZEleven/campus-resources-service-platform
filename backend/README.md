@@ -6,7 +6,7 @@ M3 接口、状态流转、权限与幂等语义见 [M3 后端](../docs/m3-backe
 
 ## 1. 准备与启动
 
-Windows 可在仓库根目录运行 `start.cmd --setup` 完成依赖安装、迁移和演示种子并启动前后端；后续运行 `start.cmd`。先创建本机 MySQL 数据库及用户，并填写本地配置，详见 [新设备启动说明](../docs/local-start.md)。以下为手动步骤。
+Windows 可在仓库根目录运行 `start.cmd --setup` 安装依赖、补齐独立资源密钥、迁移和初始化公共层/M3/M2 演示数据，再联合启动主后端 8001、D 资源服务 8002 和前端 5173；后续运行 `start.cmd`。支持 `--resource-port` 并自动同步 M2 调用地址。先创建本机 MySQL 数据库及用户、填写本地配置，详见 [新设备启动说明](../docs/local-start.md)。以下为手动步骤。
 
 环境：Python 3.12、MySQL 8.4；前端另需 Node.js 22.12+。MySQL 可使用本机 Windows 服务或 Docker Compose，连接参数一致。
 
@@ -17,7 +17,7 @@ Windows 可在仓库根目录运行 `start.cmd --setup` 完成依赖安装、迁
 Copy-Item .env.example .env
 ```
 
-编辑 .env，填写本机数据库地址、`MYSQL_DATABASE/MYSQL_USER/MYSQL_PASSWORD`，替换 `JWT_SIGNING_KEY` 和 `SEED_USER_PASSWORD`。本机安装 MySQL 时先创建目标数据库、应用用户并授权，无需运行下列 Compose 命令；只有使用容器时才配置 `MYSQL_ROOT_PASSWORD`。JWT 密钥至少 32 字符，可生成：
+编辑 .env，填写本机数据库地址、`MYSQL_DATABASE/MYSQL_USER/MYSQL_PASSWORD`，替换 `JWT_SIGNING_KEY` 和 `SEED_USER_PASSWORD`。`RESOURCE_SERVICE_KEY` 必须为独立的至少 32 字符密钥，供两个后端共同使用；下方 `scripts.dev_config` 会补齐缺失/空/示例值，保留有效值。`M2_RESOURCE_BASE_URL` 默认指向 `http://127.0.0.1:8002`。本机 MySQL 须先创建数据库和用户；只有使用容器才配置 `MYSQL_ROOT_PASSWORD`。JWT 密钥可生成：
 
 ```powershell
 python -c "import secrets; print(secrets.token_urlsafe(48))"
@@ -35,16 +35,29 @@ docker compose --env-file .env -f deploy/compose.yml ps
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m scripts.dev_config
 .\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe -m scripts.seed
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+.\.venv\Scripts\python.exe -m scripts.seed_m2
+```
+
+然后在 backend 目录用两个终端分别启动：
+
+```powershell
+# 终端一：独立 D 资源服务
+.\.venv\Scripts\python.exe -m uvicorn app.resource_api:app --host 127.0.0.1 --port 8002
+```
+
+```powershell
+# 终端二：主应用，读取 M2_RESOURCE_BASE_URL=http://127.0.0.1:8002
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 ```
 
 Linux/macOS 将 .\.venv\Scripts\python.exe 换为 .venv/bin/python，其余命令相同。
 
-- 健康：http://127.0.0.1:8000/health
-- 数据库连通检查：http://127.0.0.1:8000/ready
-- 接口文档：http://127.0.0.1:8000/docs
+- 健康：http://127.0.0.1:8001/health
+- 数据库连通检查：http://127.0.0.1:8001/ready
+- 主接口文档：http://127.0.0.1:8001/docs
+- D 资源服务文档：http://127.0.0.1:8002/docs（需要独立服务密钥调用）
 
 没有自动建表；必须先执行 Alembic。停止开发服务按 Ctrl+C。Compose 只提供本地 MySQL，当前没有自动部署或生产发布功能。
 
@@ -62,8 +75,12 @@ Linux/macOS 将 .\.venv\Scripts\python.exe 换为 .venv/bin/python，其余命�
 | room_admin | STAFF / OPS | ROOM_ADMIN |
 | property_admin | STAFF / OPS | PROPERTY_ADMIN |
 | repairer | STAFF / OPS | REPAIRER |
+| staff | STAFF / OPS | USER |
+| dept_admin_cs / dept_admin_ee | STAFF / CS 或 EE | DEPT_ADMIN + 对应院系范围 |
+| campus_admin | STAFF / OPS | CAMPUS_ADMIN + MAIN 校区范围 |
+| m2_room_admin | STAFF / OPS | ROOM_ADMIN + M2 演示教室范围 |
 
-种子重复执行不重置密码、不启用被停用用户、不恢复已撤销角色。只用于开发演示，勿用真实学生数据。初始化了 2 间教室、每间 3 个座位；B1-102 仅 EE 院系使用。
+`scripts.seed_m2` 包含基础种子，重复执行不重置密码、不启用被停用用户、不恢复已撤销角色/范围或重设已有教室类型。只用于开发演示，勿用真实学生数据。基础 2 间教室每间 3 座，B1-102 仅 EE 院系使用；另提供 M2-CAMPUS、M2-CS、M2-EE 三间整室教室与对应审批范围。完整两级审批演示见 [M2 运行说明](../docs/m2-implementation.md#6-演示数据)。
 
 ## 3. 已开放 HTTP 接口
 

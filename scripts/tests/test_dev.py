@@ -22,11 +22,24 @@ def free_port():
 
 
 class LauncherTests(unittest.TestCase):
+    def assert_port_closed(self, port):
+        # Windows Job 回收完成与 TCP 监听释放可能不同步，等待实际关闭条件。
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                    pass
+            except OSError:
+                return
+            time.sleep(0.05)
+        self.fail(f"进程退出后端口仍可连接：{port}")
+
     def test_create_config_once_without_replacing_existing_secret(self):
         with tempfile.TemporaryDirectory(prefix="启动 测试 ") as directory:
             root = Path(directory)
             (root / ".env.example").write_text(
                 "JWT_SIGNING_KEY=REPLACE_WITH_RANDOM_KEY_AT_LEAST_32_CHARACTERS\n"
+                "RESOURCE_SERVICE_KEY=REPLACE_WITH_INDEPENDENT_RANDOM_KEY_AT_LEAST_32_CHARACTERS\n"
                 "MYSQL_PASSWORD=REPLACE_WITH_LOCAL_DATABASE_PASSWORD\n",
                 encoding="utf-8",
             )
@@ -36,6 +49,10 @@ class LauncherTests(unittest.TestCase):
             key = content.splitlines()[0].split("=", 1)[1]
             self.assertGreaterEqual(len(key), 32)
             self.assertNotIn("REPLACE_", key)
+            resource_key = content.splitlines()[1].split("=", 1)[1]
+            self.assertGreaterEqual(len(resource_key), 32)
+            self.assertNotIn("REPLACE_", resource_key)
+            self.assertNotEqual(key, resource_key)
             original = b"MYSQL_PASSWORD=keep-this-local-value\r\n"
             (root / ".env").write_bytes(original)
             dev.ensure_env(root)
@@ -57,8 +74,47 @@ class LauncherTests(unittest.TestCase):
         with self.assertRaisesRegex(dev.LaunchError, "不同端口"):
             dev.check_ports(18001, 18001)
         for value in ("0", "65536", "abc"):
-            with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
+            with (
+                self.subTest(value=value),
+                self.assertRaises(argparse.ArgumentTypeError),
+            ):
                 dev.port_number(value)
+
+    def test_resource_port_is_distinct_and_checked_for_collision(self):
+        for ports in ((18101, 18102, 18101), (18101, 18102, 18102)):
+            with (
+                self.subTest(ports=ports),
+                self.assertRaisesRegex(dev.LaunchError, "不同端口"),
+            ):
+                dev.check_ports(*ports)
+        with socket.socket() as listener:
+            if os.name == "nt":
+                listener.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            listener.bind(("127.0.0.1", 0))
+            listener.listen()
+            occupied = listener.getsockname()[1]
+            with self.assertRaisesRegex(dev.LaunchError, str(occupied)):
+                dev.check_ports(free_port(), free_port(), occupied)
+
+    def test_three_processes_are_cleaned_when_last_service_fails(self):
+        processes = []
+        with self.assertRaisesRegex(dev.LaunchError, "就绪前退出"):
+            with dev.managed_processes() as managed:
+                for _ in range(2):
+                    process = dev.start_process(
+                        [sys.executable, "-c", "import time; time.sleep(60)"],
+                        Path.cwd(),
+                    )
+                    managed.append(process)
+                    processes.append(process)
+                failed = dev.start_process(
+                    [sys.executable, "-c", "raise SystemExit(9)"], Path.cwd()
+                )
+                managed.append(failed)
+                processes.append(failed)
+                failed.wait(timeout=5)
+                dev.wait_http(f"http://127.0.0.1:{free_port()}/", managed, timeout=1)
+        self.assertTrue(all(process.poll() is not None for process in processes))
 
     def test_failed_sensitive_step_does_not_echo_child_output(self):
         output = io.StringIO()
@@ -109,11 +165,18 @@ class LauncherTests(unittest.TestCase):
                         timeout=0.3,
                         expected_status="wrong",
                     )
+                with self.assertRaisesRegex(dev.LaunchError, "超时"):
+                    dev.wait_http(
+                        f"http://127.0.0.1:{port}/",
+                        [process],
+                        timeout=0.3,
+                        expected_status="ready",
+                        expected_component="D-resource-service",
+                    )
             finally:
                 dev.stop_process(process)
             self.assertIsNotNone(process.poll())
-            with self.assertRaises(OSError):
-                socket.create_connection(("127.0.0.1", port), timeout=0.3)
+            self.assert_port_closed(port)
 
     def test_exited_child_is_not_reported_as_ready(self):
         process = dev.start_process(
@@ -145,15 +208,7 @@ class LauncherTests(unittest.TestCase):
                     pass
             finally:
                 dev.stop_process(process)
-            deadline = time.monotonic() + 5
-            while time.monotonic() < deadline:
-                try:
-                    with socket.create_connection(("127.0.0.1", port), timeout=0.2):
-                        time.sleep(0.1)
-                except OSError:
-                    break
-            else:
-                self.fail("启动器退出后仍残留孙进程")
+            self.assert_port_closed(port)
 
 
 if __name__ == "__main__":

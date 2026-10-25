@@ -1,4 +1,4 @@
-"""独立 D 资源网络应用：uvicorn app.resource_api:app --port 8001。"""
+"""独立 D 资源网络应用：uvicorn app.resource_api:app --port 8002。"""
 
 import secrets
 from typing import Annotated

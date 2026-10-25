@@ -4,7 +4,7 @@ Vue 3 + TypeScript + Vite + Element Plus + Pinia + Axios。已提供登录、公
 
 ## 运行
 
-Windows 一并启动前后端可在仓库根目录运行 `start.cmd`；首次使用先运行 `start.cmd --setup`，按 [本地启动说明](../docs/local-start.md) 配置 MySQL 和 `.env`。以下为单独启动前端的方式。
+Windows 可在仓库根目录运行 `start.cmd` 联合启动主后端、独立 D 资源服务和前端；首次使用或从旧版升级 M2 时运行 `start.cmd --setup`，按 [本地启动说明](../docs/local-start.md) 配置 MySQL 和 `.env`。默认主后端 8001、资源服务 8002、前端 5173，参数会自动同步两个调用地址。以下为单独启动前端的方式。
 
 先按 backend/README.md 启动 MySQL、迁移、种子和后端，再在 frontend 目录：
 
@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-打开终端给出的本地地址，通常是 http://127.0.0.1:5173。Vite 将 /api 转发至 http://127.0.0.1:8000，无需配置后端宽泛跨域。
+打开终端给出的本地地址，通常是 http://127.0.0.1:5173。Vite 将 /api 转发至主后端 http://127.0.0.1:8001，无需配置后端宽泛跨域；不要把代理指向仅提供服务端资源命令的 D 8002。
 
 后端使用其他端口时，复制 `.env.example` 为 `.env.local`，修改代理地址后重启 Vite。例如本机后端运行在 8001：
 
