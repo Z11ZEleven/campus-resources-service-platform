@@ -19,6 +19,7 @@ from app.modules.m1.models import (
 )
 from app.modules.m3.models import WorkOrder, WorkOrderEscalation, WorkOrderRating
 from app.modules.notifications.models import Notification
+from app.modules.outbox.models import OutboxEvent
 from app.modules.resources.allocation_models import SeatAllocation
 from app.modules.resources.models import (
     Building,
@@ -52,6 +53,7 @@ __all__ = [
     "WorkOrderEscalation",
     "WorkOrderRating",
     "Notification",
+    "OutboxEvent",
     "ResourceBlock",
     "Room",
     "Seat",

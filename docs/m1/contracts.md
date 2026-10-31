@@ -1,6 +1,6 @@
-# M1 基础契约：T01–T05
+# M1 基础契约：T01–T06
 
-日期：2026-10-22。关联 [实施 Issue #15](https://github.com/Z11ZEleven/campus-resources-service-platform/issues/15)、[规划 Issue #8](https://github.com/Z11ZEleven/campus-resources-service-platform/issues/8)。本轮为用户授权的任务分支提案，人员责任与组内评审仍待确认，见 [责任登记](../team.md)。
+日期：2026-10-22；T06 更新：2026-10-31。关联 [实施 Issue #15](https://github.com/Z11ZEleven/campus-resources-service-platform/issues/15)、[规划 Issue #8](https://github.com/Z11ZEleven/campus-resources-service-platform/issues/8)。本轮为用户授权的任务分支提案，人员责任与组内评审仍待确认，见 [责任登记](../team.md)。
 
 ## 1. 固定技术与模块边界
 
@@ -72,4 +72,38 @@ Vue 3/TypeScript、FastAPI、同步 SQLAlchemy、MySQL 8.4、Alembic；主外键
 
 ## 7. 本轮与后续工作的界线
 
-本轮只交付基础工程、D 接入、主数据和 M1 数据结构。预约查询/创建/取消、签到编码、违约、通知任务、M2/M3 写回及真实网络验收仍在 T06–T17，不因表已存在就标记业务完成。人员分工、组内评审、人工验收及生产审批状态均由人补充。
+本轮交付基础工程、D 接入、主数据、M1 数据结构，以及 T06 的公共 Outbox、独立 Worker、站内通知和受控审计接收。预约查询/创建/取消、签到编码、违约、预约业务触发点、M2/M3 写回及真实网络验收仍在 T07–T17，不因表或基础设施已存在就标记业务完成。人员分工、组内评审、人工验收及生产审批状态均由人补充。
+
+## 8. T06 公共 Outbox 与受控通知/审计适配
+
+### 8.1 公共任务表
+
+`d_outbox_events` 由 D 维护，业务模块只通过公开函数登记，不直接写表。主要字段：来源模块、模块内唯一事件键、处理器类型、业务 ID/版本、JSON 载荷、可执行时间、状态、尝试次数、最大尝试次数、租约持有者/令牌/到期时间、错误分类/最后错误、乐观版本和完成时间。业务键唯一约束为 `(source_module, event_key)`，状态为 `PENDING`、`PROCESSING`、`SUCCEEDED`、`MANUAL`。
+
+`register_event(session, *, source_module, event_key, handler, payload, business_id=0, business_version=1, available_at=None, max_attempts=None)` 在调用方事务内插入。相同处理器的同载荷登记是幂等读取；同键换处理器、业务版本或载荷返回 409，不静默覆盖，也不重置已完成状态。函数只 flush，不 commit，因此业务回滚会同时撤销任务。
+
+### 8.2 领取、完成和恢复
+
+`claim_events(session, *, worker_id, limit, lease_seconds, now=None)` 在事务内以 `FOR UPDATE SKIP LOCKED` 分别领取到期的 `PENDING` 和租约过期的 `PROCESSING`，避免多个 Worker 抢同一行。领取增加尝试次数和乐观版本，写入随机租约令牌及到期时间。
+
+`complete_event`、`retry_event`、`mark_manual` 都必须匹配事件 ID、`PROCESSING` 状态、Worker、租约令牌和期望版本；任一不匹配抛出 `LeaseLost`，旧 Worker 不能覆盖新 Worker 的结果。进程崩溃未完成时，租约到期后由其他 Worker 重新领取；接收方副作用与完成标记在同一事务提交。接收方已提交但响应丢失时，重试由通知/审计的稳定事件键去重。
+
+### 8.3 重试、失败和查询
+
+`retry_event` 写回 `PENDING`、下次可执行时间和 `TRANSIENT` 错误；默认指数退避从 5 秒起、上限 300 秒。达到 `max_attempts` 或收到不可重试错误时写 `MANUAL`，错误分类为 `RETRY_EXHAUSTED` 或 `PERMANENT`，并保留最后错误供人工处理。`list_events` 可按状态/处理器查询，`list_failures` 查询 `MANUAL`；当前是服务层运维入口，不新增公共 HTTP 管理界面。
+
+M1 的 `notify_reservation` 和 `audit_reservation` 默认 `max_attempts=6`，与计划中的六次投递策略一致。必须无限重试的 M1 业务定时/释放任务可显式传 `max_attempts=None`，不与外部投递策略混用；T06 未实现这些业务定时任务本身。
+
+### 8.4 独立 Worker
+
+入口为 `python -m app.worker`，支持常驻轮询和 `--once` 单批模式。默认每批 10 条、租约 30 秒、退避 5–300 秒，可由 `OUTBOX_*` 配置或命令行覆盖。Worker 独立于 HTTP 进程启动，不依赖 M3 同进程超时循环；收到 SIGTERM/SIGINT 后停止领取新批次。启动前须执行迁移和种子。
+
+### 8.5 通知与审计接收
+
+`deliver_notification` 调用现有 `publish_notifications`，写入真实 `d_notifications` 站内收件箱；收件人/模块事件键唯一，重复投递保留首次通知及已读时间。站内收件箱是本轮的实际通知渠道；邮件、微信等外部渠道未接入，开发日志不作为通知渠道。
+
+`receive_audit` 调用扩展后的 `record_operation`。审计行必须有 `actor_type`：用户为 `USER` 且带 `actor_id`，服务主体为 `SERVICE` 且带 `service_principal_id`，Worker/系统动作为 `SYSTEM` 且两者为空；不得把服务主体 ID 冒充用户 ID，也不得为系统动作编造学生操作者。`(module, event_key)` 唯一使重试幂等，异载荷冲突返回 409。既有用户审计调用默认 `USER/SUCCESS`，保持兼容。
+
+### 8.6 边界与未完成
+
+T06 只建立公共任务与接收基础设施，不实现预约创建/取消/签到/违约的具体触发点；这些在 T09/T11 接入并需补充行为测试。故障查询目前无管理 HTTP 页面；通知没有外部通道；审计迁移降级在存在 `SYSTEM`/`SERVICE` 行时会因 `actor_id` 恢复非空而拒绝，生产优先前向修复。Worker 运行指标、告警和真实跨模块网络投递仍待 T16/T17。

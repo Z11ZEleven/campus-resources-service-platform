@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     m3_acceptance_timeout_hours: int = Field(default=24, ge=1, le=8760)
     m3_timeout_scan_interval_seconds: int = Field(default=60, ge=5, le=3600)
     m3_timeout_scan_enabled: bool = True
+    outbox_poll_interval_seconds: float = Field(default=2.0, ge=0.1, le=300)
+    outbox_batch_size: int = Field(default=10, ge=1, le=100)
+    outbox_lease_seconds: int = Field(default=30, ge=1, le=3600)
+    outbox_retry_base_seconds: int = Field(default=5, ge=1, le=3600)
+    outbox_retry_max_seconds: int = Field(default=300, ge=1, le=86400)
 
     @field_validator("jwt_signing_key")
     @classmethod

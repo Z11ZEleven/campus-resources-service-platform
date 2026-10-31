@@ -43,6 +43,7 @@ def test_schema_matches_models_and_empty_database_replay(factory, mysql_engine):
             "m3_work_order_ratings",
             "m3_work_order_escalations",
             "d_notifications",
+            "d_outbox_events",
             "alembic_version",
         }
     )
@@ -90,6 +91,65 @@ def test_datetime_columns_preserve_milliseconds(mysql_engine):
     temporal = [column for column in columns if isinstance(column["type"], DATETIME)]
     assert temporal
     assert all(column["type"].fsp == 3 for column in temporal)
+
+
+def test_outbox_schema_supports_leases_and_audit_actor_types(mysql_engine):
+    from sqlalchemy.dialects.mysql import DATETIME
+
+    inspector = inspect(mysql_engine)
+    outbox = {column["name"]: column for column in inspector.get_columns("d_outbox_events")}
+    assert {
+        "id",
+        "source_module",
+        "event_key",
+        "handler",
+        "business_id",
+        "business_version",
+        "payload",
+        "status",
+        "available_at",
+        "attempts",
+        "max_attempts",
+        "lease_owner",
+        "lease_token",
+        "lease_expires_at",
+        "last_error",
+        "error_code",
+        "version",
+        "created_at",
+        "updated_at",
+        "completed_at",
+    } <= set(outbox)
+    assert outbox["id"]["type"].unsigned
+    assert isinstance(outbox["available_at"]["type"], DATETIME)
+    assert outbox["available_at"]["type"].fsp == 3
+    assert outbox["max_attempts"]["nullable"]
+    outbox_uniques = {
+        tuple(item["column_names"])
+        for item in inspector.get_unique_constraints("d_outbox_events")
+    }
+    assert ("source_module", "event_key") in outbox_uniques
+    outbox_indexes = {
+        item["name"] for item in inspector.get_indexes("d_outbox_events")
+    }
+    assert {"ix_outbox_due", "ix_outbox_lease"} <= outbox_indexes
+
+    audit = {column["name"]: column for column in inspector.get_columns("d_operation_logs")}
+    assert audit["actor_id"]["nullable"]
+    assert not audit["actor_type"]["nullable"]
+    assert audit["service_principal_id"]["nullable"]
+    assert not audit["result"]["nullable"]
+    assert audit["event_key"]["nullable"]
+    audit_uniques = {
+        tuple(item["column_names"])
+        for item in inspector.get_unique_constraints("d_operation_logs")
+    }
+    assert ("module", "event_key") in audit_uniques
+    foreign_keys = {
+        (tuple(key["constrained_columns"]), key["referred_table"], tuple(key["referred_columns"]))
+        for key in inspector.get_foreign_keys("d_operation_logs")
+    }
+    assert (("service_principal_id",), "d_service_principals", ("id",)) in foreign_keys
 
 
 def test_m3_schema_has_unsigned_keys_foreign_keys_and_idempotency_constraint(mysql_engine):

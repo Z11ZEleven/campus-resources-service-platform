@@ -1,6 +1,6 @@
-# M1 T01–T05 需求追踪
+# M1 T01–T06 需求追踪
 
-日期：2026-10-22；范围与契约见 [基础契约](contracts.md)。原父需求保留，未实现部分不从基线删除。
+日期：2026-10-22；T06 更新：2026-10-31；范围与契约见 [基础契约](contracts.md)。原父需求保留，未实现部分不从基线删除。
 
 | 需求/任务 | 本轮交付与实现 | 验证入口 | 仍未完成 |
 | --- | --- | --- | --- |
@@ -11,7 +11,7 @@
 | M1-001-A / T04 基础 | 空间座位、固定/移动插座属性及受控维护 | test_resource_management、公开资源查询 | M1 专用时间/属性搜索和分页 T08 |
 | M1-002-A/B/C / T05 数据 | Reservation、Repository、来源/占用、0006 | test_m1_models、test_allocations、test_migrations | 预约状态机、本人取消与幂等 HTTP T07/T09 |
 | M1-003-A/B / T05 数据 | RoomCheckinCode、CheckinAttempt，不保存明文提交编码 | test_m1_models 的唯一性与字段校验 | 编码生成、合法窗口、实际限频 T10 |
-| M1-004-A/B/C/D | 本轮仅保留需求 | 计划中的后续测试 | 通知、后台恢复和失效处理 T06/T11 |
+| M1-004-A/B/C/D / T06 | `d_outbox_events`、公共登记/领取/完成/重试/故障查询、独立 Worker、M1 通知/审计适配、0007；站内通知为真实收件箱 | test_outbox、test_migrations、Worker `--once` 冒烟 | 预约业务触发点 T09/T11、外部邮件/微信、故障管理 HTTP/告警 T16/T17 |
 | M1-005-A/B / T05 数据 | 历史读取 Repository、Violation 与事件结构 | test_m1_models | 本人历史 HTTP、历史复用和违约展示 T09/T14 |
 | M1-006-B | 本轮仅保留需求 | 计划中的后续测试 | 管理参数与统计 T13/T15 |
 | INT-001/002/003 基础 | 复用 D 来源事实、精确释放、同室来源叠加及迁移保留 | test_resources、test_allocations、既有 M3 回归 | 新来源版本/网络写回与真实跨模块验收 T12/T16 |

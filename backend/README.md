@@ -1,8 +1,8 @@
 # 公共层 D 与 M3 后端
 
-已实现 FastAPI + SQLAlchemy + MySQL 的公共基础和 M3 文字报修闭环，现包含 **17 张 D 表、5 张 M1 表、3 张 M3 表**。M3 提供上报、查询、派单、维修、完工、验收、超时升级、一次性评价及真实站内通知；对应 Vue 前端已接入。M1 五张表已建立，但预约/签到等业务接口与页面尚未实现；M2 业务仍待后续实施。
+已实现 FastAPI + SQLAlchemy + MySQL 的公共基础和 M3 文字报修闭环，现包含 **18 张 D 表、5 张 M1 表、3 张 M3 表**。M3 提供上报、查询、派单、维修、完工、验收、超时升级、一次性评价及真实站内通知；对应 Vue 前端已接入。M1 五张表已建立，但预约/签到等业务接口与页面尚未实现；M2 业务仍待后续实施。T06 新增公共 Outbox、独立 Worker、真实站内通知接收和按操作者类型区分的审计接收。
 
-M3 接口、状态流转、权限与幂等语义见 [M3 后端](../docs/m3-backend.md)与 [超时/评价/通知扩展](../docs/m3-extensions.md)。执行 `alembic upgrade head` 会升级至 `0006_m1_foundation`，保留原公共层表与工单数据。新增 D 通知契约为本次用户确认的本地实现提案，待团队评审，不代表团队共识。
+M3 接口、状态流转、权限与幂等语义见 [M3 后端](../docs/m3-backend.md)与 [超时/评价/通知扩展](../docs/m3-extensions.md)。执行 `alembic upgrade head` 会升级至 `0007_outbox_audit`，保留原公共层表与工单数据。新增 D 通知、Outbox 和审计字段为本次用户确认的本地实现提案，待团队评审，不代表团队共识。
 
 ## 1. 准备与启动
 
@@ -47,6 +47,17 @@ Linux/macOS 将 .\.venv\Scripts\python.exe 换为 .venv/bin/python，其余命�
 没有自动建表；必须先执行 Alembic。停止开发服务按 Ctrl+C。Compose 只提供本地 MySQL，当前没有自动部署或生产发布功能。
 
 后端默认每 60 秒自动扫描 M3 超时工单；待派单/已派单/待验收 24 小时、维修中 48 小时，严格超过截止才升级，阶段/轮次去重。配置变量、关闭方式、逐单事务、返修重新计时及站内通知边界见 [扩展配置](../docs/m3-extensions.md#4-配置与任务运行)。先迁移再启动 worker，修改配置后重启后端。
+
+公共 Outbox 使用独立进程，不与 HTTP 或 M3 同进程任务混用：
+
+```bash
+# 常驻轮询；生产用进程管理器守护，收到 SIGTERM/SIGINT 后停止领取新批次。
+.venv/bin/python -m app.worker
+# 本地检查：只处理一批后退出。
+.venv/bin/python -m app.worker --once --worker-id local-check
+```
+
+默认每批 10 条、租约 30 秒、重试退避 5–300 秒，可由 `OUTBOX_BATCH_SIZE`、`OUTBOX_LEASE_SECONDS`、`OUTBOX_RETRY_BASE_SECONDS`、`OUTBOX_RETRY_MAX_SECONDS`、`OUTBOX_POLL_INTERVAL_SECONDS` 或对应命令行参数覆盖。失败达到上限或不可重试时保留为 `MANUAL`，供服务层 `list_failures` 查询和人工处理。
 
 ## 2. 演示账号
 
@@ -100,12 +111,15 @@ Linux/macOS 将 .\.venv\Scripts\python.exe 换为 .venv/bin/python，其余命�
 - M2 整室占用：occupy_room
 - M3 维修限制：start_maintenance
 - 按来源释放：release_source
-- 业务操作记录：app.modules.audit.service.record_operation
-- 站内通知：app.modules.notifications.service.publish_notifications（本地公共契约提案，待团队评审）
+- 公共 Outbox 登记：app.modules.outbox.service.register_event
+- M1 预约通知/审计适配：app.modules.m1.integrations.notify_reservation、audit_reservation
+- 业务操作记录：app.modules.audit.service.record_operation（`USER`/`SERVICE`/`SYSTEM`，支持事件键幂等）
+- 站内通知：app.modules.notifications.service.publish_notifications（真实收件箱，本地公共契约提案，待团队评审）
+- 公共任务 Worker：`python -m app.worker`（独立进程，租约领取与失败查询）
 
 HTTP 的 Db 依赖已经开启事务，且在成功响应发出前提交。模块函数只能 flush，不能内部 commit、再次 begin 或使用另一个 Session。脚本调用才需要自行 with session.begin()。
 
-本轮为同进程公开服务函数，不是跨模块网络链路；课程最终的网络调用与失败补偿仍需后续完成。
+模块间调用仍为同进程公开服务函数；Outbox/Worker 提供同库跨进程可靠投递与重试，但不是跨模块网络链路。课程最终的网络调用和跨主机故障补偿仍需后续完成。
 
 ## 5. 检查
 
@@ -121,17 +135,17 @@ $env:TEST_DATABASE_URL="mysql+pymysql://测试用户:测试密码@127.0.0.1:3306
 .\.venv\Scripts\python.exe -m pytest --require-mysql -q
 ```
 
-测试会迁移、清空专用测试库数据，并验证迁移回放、登录与停用、权限、真实事务和行锁、重复预约、幂等、多来源恢复、缓存失效与种子幂等。未设置测试地址时普通 pytest 会跳过 MySQL 测试；CI 使用 --require-mysql，缺少数据库不会假装通过。
+测试会迁移、清空专用测试库数据，并验证迁移回放、登录与停用、权限、真实事务和行锁、重复预约、幂等、多来源恢复、缓存失效、Outbox 租约/并发/重试、通知与审计重投幂等及种子幂等。未设置测试地址时普通 pytest 会跳过 MySQL 测试；CI 使用 --require-mysql，缺少数据库不会假装通过。
 
-测试入口显式关闭自动超时 worker，防止与数据库回放、清理竞争。2026-10-21 本机完整后端 **145 passed**、Ruff 通过；包括超时、一次性评价、站内通知及并发回滚/已读快照等验证。真实浏览器、保护破坏实验和本机迁移证据见 [扩展验证记录](../docs/m3-extensions.md#6-本地验证记录2026-10-21)，不代表远端 CI 或人工验收。
+测试入口显式关闭自动超时 worker，防止与数据库回放、清理竞争。2026-10-31 本机完整后端 **216 passed**、Ruff 通过；T06 的租约恢复、并发领取、接收重投及审计操作者证据见 [M1 验证记录](../docs/m1/verification.md)，不代表远端 CI 或人工验收。2026-10-21 M3 浏览器与保护破坏记录见 [扩展验证记录](../docs/m3-extensions.md#6-本地验证记录2026-10-21)。
 
 ## 6. 后续工作
 
-M1 业务接口、M2 业务表和接口、M3 局部业务权限适配、签到违约、附件、撤销/转派/重开、完整独立业务事件流、外部邮件/微信通知、真实模块间网络集成与跨进程可靠补偿、测试部署、生产审批和发布回滚仍待后续实现。原完工请求缺少幂等轮次的限制仍保留，详见 [M3 已知限制](../docs/m3-backend.md#8-已记录的原设计限制)。
+M1 业务接口与预约通知触发点、M2 业务表和接口、M3 局部业务权限适配、签到违约、附件、撤销/转派/重开、Outbox 故障管理 HTTP/指标/告警、外部邮件/微信通知、真实模块间网络集成、测试部署、生产审批和发布回滚仍待后续实现。原完工请求缺少幂等轮次的限制仍保留，详见 [M3 已知限制](../docs/m3-backend.md#8-已记录的原设计限制)。
 
-## 7. T01–T05 初始化与升级
+## 7. T01–T06 初始化与升级
 
-升级先备份历史数据库，执行已有 Alembic 命令到 0006，再运行种子；旧用户、来源、M3 工单和通知保留。旧客户端重新登录；人员责任和共同评审仍待人工完成。不要在共享业务库运行测试或 downgrade。完整契约见 [M1 基础契约](../docs/m1/contracts.md)。
+升级先备份历史数据库，执行已有 Alembic 命令到 0007，再运行种子；旧用户、来源、M3 工单和通知保留。`0007` 新建 `d_outbox_events` 并扩展审计操作者字段；已有用户审计回填为 `USER/SUCCESS`。旧客户端重新登录；人员责任和共同评审仍待人工完成。不要在共享业务库运行测试或 downgrade；含 `SYSTEM`/`SERVICE` 审计行时降级会因 `actor_id` 恢复非空而失败。完整契约见 [M1 基础契约](../docs/m1/contracts.md)。
 
 全局管理员首次初始化（使用部署操作员的数据库配置；已有同名用户不恢复权限、不改密码）：
 
