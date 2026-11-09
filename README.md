@@ -27,10 +27,10 @@ git clone https://github.com/Z11ZEleven/campus-resources-service-platform.git
 cd campus-resources-service-platform
 ```
 
-启动脚本 [PR #21](https://github.com/Z11ZEleven/campus-resources-service-platform/pull/21) 合并前，需要切换到对应分支；合并后直接使用最新 `main` 即可：
+本次 M2 统一启动适配合并前，可切换到以下分支体验；合并后直接使用最新 `main`：
 
 ```powershell
-git switch feat/windows-dev-launcher
+git switch fix/unified-launcher-m2
 ```
 
 ### 2. 生成本机配置
@@ -41,7 +41,7 @@ git switch feat/windows-dev-launcher
 .\start.cmd --setup
 ```
 
-首次没有 `.env` 时，脚本会从示例生成配置和随机 JWT 密钥，然后退出，提示填写本机信息。完成下一步后再次执行即可；已有 `.env` 会原样保留。
+首次没有 `.env` 时，脚本会从示例分别生成随机 JWT 密钥和独立的 `RESOURCE_SERVICE_KEY`，然后退出，提示填写本机信息。完成下一步后再次执行即可。已有数据库密码和有效密钥保留；旧配置中缺失、空或仍是示例占位值的资源服务密钥会在 `--setup` 时自动补齐。
 
 ### 3. 创建 MySQL 数据库并填写密码
 
@@ -68,7 +68,7 @@ MYSQL_PASSWORD=REPLACE_WITH_LOCAL_DATABASE_PASSWORD
 SEED_USER_PASSWORD=REPLACE_WITH_LOCAL_DEMO_PASSWORD
 ```
 
-替换两个密码占位值：`MYSQL_PASSWORD` 必须与数据库账号密码一致，`SEED_USER_PASSWORD` 是首次创建演示账号时使用的密码，至少 12 位。保留脚本生成的 `JWT_SIGNING_KEY`，其余配置可保持默认。
+替换两个密码占位值：`MYSQL_PASSWORD` 必须与数据库账号密码一致，`SEED_USER_PASSWORD` 是首次创建演示账号时使用的密码，至少 12 位。保留脚本生成的 `JWT_SIGNING_KEY` 和 `RESOURCE_SERVICE_KEY`，两者必须不同；资源服务密钥不会发送到浏览器。
 
 如果 `.env` 是自行复制的示例，须另行替换 JWT 密钥占位值，可用以下命令生成随机密钥：
 
@@ -86,18 +86,26 @@ py -3.12 -c "import secrets; print(secrets.token_urlsafe(48))"
 .\start.cmd --setup
 ```
 
-脚本会创建 `backend/.venv`，安装锁定的后端和前端依赖，执行 `alembic upgrade head` 和幂等演示数据初始化，再同时启动 FastAPI 和 Vue。迁移会升级 `.env` 指定的数据库；已有重要数据请先备份。重复初始化不会重置已有账号密码或恢复已撤销的角色。
+脚本会创建 `backend/.venv`，安装锁定依赖，补齐独立服务密钥，执行 `alembic upgrade head` 和 `scripts.seed_m2`（包含公共层/M3 及 M2 演示数据），再启动独立 D 资源服务、FastAPI 主应用和 Vue。D 服务通过健康、服务密钥鉴权及只读数据库检查后，才启动主应用和前端。迁移会升级 `.env` 指定的数据库；已有重要数据请先备份。重复初始化不会重置已有账号密码、启用停用用户或恢复已撤销的角色/审批范围。
 
 启动成功后访问：
 
 - M3 页面：<http://127.0.0.1:5173/m3/work-orders>
+- M2 页面：<http://127.0.0.1:5173/m2/applications>
 - 后端接口文档：<http://127.0.0.1:8001/docs>
+- 独立 D 资源服务：<http://127.0.0.1:8002/docs>（服务接口需要独立密钥，普通登录 Token 无权调用）
 
 | 演示角色 | 用户名 | 首次创建时的密码 |
 | --- | --- | --- |
 | 报修人 | `student` | `.env` 中的 `SEED_USER_PASSWORD` |
 | 物业管理员 | `property_admin` | 同上 |
 | 维修人员 | `repairer` | 同上 |
+| 校级一级审批 | `campus_admin` | 同上 |
+| 院系一级审批 | `dept_admin_cs` / `dept_admin_ee` | 同上 |
+| M2 教室二级审批 | `m2_room_admin` | 同上 |
+| 工作人员申请 | `staff` | 同上 |
+
+M2 演示：`student` 或 `staff` 申请 `M2-CAMPUS` → `campus_admin` 一级通过 → `m2_room_admin` 二级通过 → 主应用通过真实 HTTP 请求 D 服务，最终显示“已批准”。申请须至少提前两个北京时间自然日，在开放时段内整点开始、持续 1～4 小时。院系教室 `M2-CS` / `M2-EE` 则由对应院系管理员完成一级审批。
 
 ### 5. 日常启动与停止
 
@@ -107,20 +115,28 @@ py -3.12 -c "import secrets; print(secrets.token_urlsafe(48))"
 .\start.cmd
 ```
 
-保持终端打开，按 **Ctrl+C** 同时停止本次启动的前后端及其子进程，MySQL 服务会继续运行。拉取到依赖或迁移更新后，再执行一次 `--setup`。
+保持终端打开，按 **Ctrl+C** 停止本次启动的主后端、D 资源服务、前端及其子进程，MySQL 服务会继续运行。任一服务启动失败或退出，启动器也会回收其他服务。拉取到依赖或迁移更新后，再执行一次 `--setup`；从旧版启动器升级到 M2 时也需要执行一次。
 
 ### 6. 端口和常见检查命令
 
-默认后端 `8001`、前端 `5173`。端口被占用时，可指定其他端口，脚本会同步前端代理地址：
+三个端口必须不同，默认如下：
+
+| 服务 | 默认端口 | 参数 |
+| --- | --- | --- |
+| 主后端（M2/M3 与公共 HTTP API） | `8001` | `--backend-port` |
+| D 资源命令服务 | `8002` | `--resource-port` |
+| Vue 前端 | `5173` | `--frontend-port` |
+
+端口被占用时，可分别指定，脚本会同步前端代理和 M2 资源调用地址：
 
 ```powershell
-.\start.cmd --backend-port 8010 --frontend-port 5180
+.\start.cmd --backend-port 8010 --resource-port 8011 --frontend-port 5180
 ```
 
-此时页面地址为 `http://127.0.0.1:5180/m3/work-orders`，接口文档为 `http://127.0.0.1:8010/docs`。
+此时页面地址为 `http://127.0.0.1:5180/m3/work-orders`，主接口文档为 `http://127.0.0.1:8010/docs`，D 服务为 `http://127.0.0.1:8011/docs`。统一启动期间，`--resource-port` 对应地址会覆盖子进程中的 `M2_RESOURCE_BASE_URL`，不会改写成员已有 `.env` 或前端代理配置。
 
 ```powershell
-# 仅检查环境、数据库迁移版本和端口，不启动服务
+# 仅检查本地配置、独立密钥、数据库迁移版本和三个端口，不启动服务
 .\start.cmd --check
 
 # 安装依赖、迁移和初始化后，仅检查，不启动服务
@@ -130,7 +146,7 @@ py -3.12 -c "import secrets; print(secrets.token_urlsafe(48))"
 .\start.cmd --help
 ```
 
-连接失败时检查 MySQL 服务、`.env` 中的地址、账号密码和授权；缺少依赖或迁移落后时，确认目标库后重新运行 `--setup`。详细故障排查见 [本地启动说明](docs/local-start.md)。
+连接失败时检查 MySQL 服务、`.env` 中的地址、账号密码和授权；缺少依赖、资源密钥或迁移落后时，确认目标库后重新运行 `--setup`。环境变量优先于配置文件；无效的 `RESOURCE_SERVICE_KEY` 环境变量或与 JWT 相同的密钥需自行修正，启动器不会擅自覆盖。详细故障排查见 [本地启动说明](docs/local-start.md)。
 
 ## 业务模块
 

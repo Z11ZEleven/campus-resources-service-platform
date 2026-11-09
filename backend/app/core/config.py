@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     m2_worker_enabled: bool = True
     m2_scan_interval_seconds: int = Field(default=5, ge=1, le=3600)
     m2_reminder_hours: int = Field(default=24, ge=1, le=168)
-    m2_resource_base_url: AnyHttpUrl = "http://127.0.0.1:8001"
+    m2_resource_base_url: AnyHttpUrl = "http://127.0.0.1:8002"
     m2_resource_timeout_seconds: float = Field(default=5, ge=0.1, le=30)
     resource_service_key: SecretStr | None = Field(default=None, min_length=32)
 

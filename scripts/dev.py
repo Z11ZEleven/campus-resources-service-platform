@@ -13,6 +13,7 @@ import subprocess
 import sys
 import sysconfig
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import ProxyHandler, build_opener
@@ -50,11 +51,15 @@ def ensure_env(root):
     content = content.replace(
         "REPLACE_WITH_RANDOM_KEY_AT_LEAST_32_CHARACTERS", secrets.token_urlsafe(48)
     )
+    content = content.replace(
+        "REPLACE_WITH_INDEPENDENT_RANDOM_KEY_AT_LEAST_32_CHARACTERS",
+        secrets.token_urlsafe(48),
+    )
     # x 模式防止覆盖另一个启动进程刚写入的配置。
     with target.open("x", encoding="utf-8", newline="\n") as stream:
         stream.write(content)
     raise LaunchError(
-        f"已生成 {target} 并生成随机 JWT 密钥。请填写本机 MYSQL_* 和至少 12 位的 "
+        f"已生成 {target} 及独立的 JWT / 资源服务密钥。请填写本机 MYSQL_* 和至少 12 位的 "
         "SEED_USER_PASSWORD，创建数据库并授权后，再运行 start.cmd --setup。已有配置不会覆盖。"
     )
 
@@ -100,10 +105,11 @@ def check_venv(python):
     )
 
 
-def check_ports(backend_port, frontend_port):
-    if backend_port == frontend_port:
-        raise LaunchError("前端和后端必须使用不同端口。")
-    for port in (backend_port, frontend_port):
+def check_ports(backend_port, frontend_port, resource_port=8002):
+    ports = (backend_port, frontend_port, resource_port)
+    if len(set(ports)) != len(ports):
+        raise LaunchError("主后端、资源服务和前端必须使用不同端口。")
+    for port in ports:
         with socket.socket() as listener:
             if os.name == "nt":
                 listener.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
@@ -115,22 +121,31 @@ def check_ports(backend_port, frontend_port):
                 ) from exc
 
 
-def backend_check(python, backend, *, before_migration=False):
-    command = [python, "-m", "scripts.dev_check"]
-    if before_migration:
-        command.append("--before-migration")
+def backend_helper(python, backend, module, arguments=(), *, env=None):
+    command = [python, "-m", module, *arguments]
     result = subprocess.run(
-        command, cwd=backend, capture_output=True, timeout=40, check=False
+        command, cwd=backend, env=env, capture_output=True, timeout=40, check=False
     )
-    # dev_check 仅输出经过筛选的中文诊断，不转发第三方库 stderr。
+    # 仅调用仓库内的诊断脚本，其 stdout 不包含配置值；不转发第三方 stderr。
     message = result.stdout.decode("utf-8", errors="replace").strip()
     if message:
         print(message, flush=True)
     if result.returncode:
-        raise LaunchError("后端预检查失败，请修正上述问题后重试。")
+        raise LaunchError("后端配置/预检查失败，请修正上述问题后重试。")
 
 
-def prepare(root, npm):
+def backend_check(
+    python, backend, *, before_migration=False, env=None, resource_url=None
+):
+    arguments = []
+    if before_migration:
+        arguments.append("--before-migration")
+    if resource_url is not None:
+        arguments.extend(["--resource-url", resource_url])
+    backend_helper(python, backend, "scripts.dev_check", arguments, env=env)
+
+
+def prepare(root, npm, env):
     backend = root / "backend"
     python = venv_python(root)
     if not python.exists():
@@ -145,19 +160,23 @@ def prepare(root, npm):
         backend,
         "安装锁定的后端依赖",
     )
-    backend_check(python, backend, before_migration=True)
+    print("[启动] 检查并补齐 M2 独立服务密钥", flush=True)
+    backend_helper(python, backend, "scripts.dev_config", env=env)
+    backend_check(python, backend, before_migration=True, env=env)
     run_step([npm, "ci"], root / "frontend", "安装锁定的前端依赖")
     run_step(
         [python, "-m", "alembic", "upgrade", "head"],
         backend,
         "升级数据库结构",
         quiet=True,
+        env=env,
     )
     run_step(
-        [python, "-m", "scripts.seed"],
+        [python, "-m", "scripts.seed_m2"],
         backend,
-        "初始化演示数据（已有账号密码保持不变）",
+        "初始化公共层、M3 和 M2 演示账号、教室及审批范围（保留已有数据）",
         quiet=True,
+        env=env,
     )
 
 
@@ -271,7 +290,25 @@ def stop_process(process):
         process.wait(timeout=5)
 
 
-def wait_http(url, processes, *, timeout=45, expected_status=None):
+@contextmanager
+def managed_processes():
+    processes = []
+    try:
+        yield processes
+    finally:
+        first_error = None
+        for process in reversed(processes):
+            try:
+                stop_process(process)
+            except (OSError, subprocess.SubprocessError) as exc:
+                first_error = first_error or exc
+        if first_error:
+            raise first_error
+
+
+def wait_http(
+    url, processes, *, timeout=45, expected_status=None, expected_component=None
+):
     # localhost 不走 HTTP_PROXY，避免本机代理将健康检查转发到外部。
     opener = build_opener(ProxyHandler({}))
     deadline = time.monotonic() + timeout
@@ -280,9 +317,20 @@ def wait_http(url, processes, *, timeout=45, expected_status=None):
             raise LaunchError("服务在就绪前退出，请查看上方服务日志。")
         try:
             with opener.open(url, timeout=1) as response:
-                if response.status == 200 and (
-                    expected_status is None
-                    or json.load(response).get("status") == expected_status
+                if response.status != 200:
+                    continue
+                if expected_status is None and expected_component is None:
+                    return
+                body = json.load(response)
+                if (
+                    isinstance(body, dict)
+                    and (
+                        expected_status is None or body.get("status") == expected_status
+                    )
+                    and (
+                        expected_component is None
+                        or body.get("component") == expected_component
+                    )
                 ):
                     return
         except (OSError, URLError, ValueError):
@@ -291,9 +339,33 @@ def wait_http(url, processes, *, timeout=45, expected_status=None):
     raise LaunchError(f"等待 {url} 超时，请查看上方服务日志。")
 
 
-def serve(root, python, npm, backend_port, frontend_port):
-    processes = []
-    try:
+def serve(root, python, npm, backend_port, frontend_port, resource_port, env):
+    backend = root / "backend"
+    resource_url = f"http://127.0.0.1:{resource_port}"
+    with managed_processes() as processes:
+        processes.append(
+            start_process(
+                [
+                    python,
+                    "-m",
+                    "uvicorn",
+                    "app.resource_api:app",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(resource_port),
+                ],
+                backend,
+                env,
+            )
+        )
+        wait_http(
+            f"{resource_url}/health",
+            processes,
+            expected_status="ok",
+            expected_component="D-resource-service",
+        )
+        backend_check(python, backend, env=env, resource_url=resource_url)
         processes.append(
             start_process(
                 [
@@ -307,13 +379,16 @@ def serve(root, python, npm, backend_port, frontend_port):
                     "--port",
                     str(backend_port),
                 ],
-                root / "backend",
+                backend,
+                env,
             )
         )
         wait_http(
             f"http://127.0.0.1:{backend_port}/ready", processes, expected_status="ready"
         )
-        env = dict(os.environ, VITE_API_PROXY_TARGET=f"http://127.0.0.1:{backend_port}")
+        frontend_env = dict(
+            env, VITE_API_PROXY_TARGET=f"http://127.0.0.1:{backend_port}"
+        )
         processes.append(
             start_process(
                 [
@@ -328,23 +403,22 @@ def serve(root, python, npm, backend_port, frontend_port):
                     "--strictPort",
                 ],
                 root / "frontend",
-                env,
+                frontend_env,
             )
         )
         wait_http(f"http://127.0.0.1:{frontend_port}/", processes)
         print(
             f"\n前端：http://127.0.0.1:{frontend_port}/m3/work-orders\n"
+            f"M2：http://127.0.0.1:{frontend_port}/m2/applications\n"
             f"接口：http://127.0.0.1:{backend_port}/docs\n"
-            "请保持此终端打开；按 Ctrl+C 同时停止前后端。\n",
+            f"D 资源服务：{resource_url}/docs\n"
+            "请保持此终端打开；按 Ctrl+C 停止全部三个服务。\n",
             flush=True,
         )
         while True:
             if any(process.poll() is not None for process in processes):
-                raise LaunchError("一个服务已退出，正在停止另一服务；请查看上方日志。")
+                raise LaunchError("一个服务已退出，正在停止其他服务；请查看上方日志。")
             time.sleep(0.5)
-    finally:
-        for process in reversed(processes):
-            stop_process(process)
 
 
 def port_number(value):
@@ -362,7 +436,9 @@ def main(argv=None):
         description="校园资源平台本地开发启动器（无需 Docker）"
     )
     parser.add_argument(
-        "--setup", action="store_true", help="安装依赖、执行迁移和幂等演示种子，再启动"
+        "--setup",
+        action="store_true",
+        help="补齐服务密钥、安装依赖、迁移和初始化公共层/M2/M3 演示数据，再启动",
     )
     parser.add_argument(
         "--check",
@@ -371,28 +447,50 @@ def main(argv=None):
     )
     parser.add_argument("--backend-port", type=port_number, default=8001)
     parser.add_argument("--frontend-port", type=port_number, default=5173)
+    parser.add_argument(
+        "--resource-port",
+        type=port_number,
+        default=8002,
+        help="D 资源服务端口，自动同步 M2 调用地址",
+    )
     args = parser.parse_args(argv)
     if sys.version_info[:2] != (3, 12):
         raise LaunchError("请使用 Python 3.12 运行启动器。")
     if os.name == "nt" and not sysconfig.get_platform().startswith("win"):
-        raise LaunchError("Windows 请使用原生 Windows Python 3.12，暂不支持 MSYS2 Python。")
+        raise LaunchError(
+            "Windows 请使用原生 Windows Python 3.12，暂不支持 MSYS2 Python。"
+        )
     npm = node_tools()
     if args.setup:
         ensure_env(ROOT)
     elif not (ROOT / ".env").is_file():
         raise LaunchError("缺少仓库根目录 .env，请先运行 start.cmd --setup。")
-    check_ports(args.backend_port, args.frontend_port)
+    check_ports(args.backend_port, args.frontend_port, args.resource_port)
+    env = dict(
+        os.environ, M2_RESOURCE_BASE_URL=f"http://127.0.0.1:{args.resource_port}"
+    )
     if args.setup:
-        prepare(ROOT, npm)
+        prepare(ROOT, npm, env)
     python = venv_python(ROOT)
     check_venv(python)
     if not (ROOT / "frontend" / "node_modules" / "vite" / "bin" / "vite.js").is_file():
         raise LaunchError("尚未安装前端依赖，请先运行 start.cmd --setup。")
-    backend_check(python, ROOT / "backend")
+    backend_check(python, ROOT / "backend", env=env)
     if args.check:
-        print("环境、数据库迁移版本及端口检查通过；未启动服务。", flush=True)
+        print(
+            "环境、独立服务密钥、数据库迁移版本及三个端口检查通过；未启动服务。",
+            flush=True,
+        )
         return
-    serve(ROOT, python, npm, args.backend_port, args.frontend_port)
+    serve(
+        ROOT,
+        python,
+        npm,
+        args.backend_port,
+        args.frontend_port,
+        args.resource_port,
+        env,
+    )
 
 
 if __name__ == "__main__":
