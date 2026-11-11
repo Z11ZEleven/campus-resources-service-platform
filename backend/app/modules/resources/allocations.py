@@ -7,7 +7,7 @@ from app.modules.resources.models import Seat
 
 
 def materialize_source(session, source):
-    if source.source_module == "M3":
+    if source.source_module in {"M3", "D"}:
         return
     seat_ids = (
         [source.seat_id]

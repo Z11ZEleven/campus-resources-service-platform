@@ -95,9 +95,7 @@ def register_event(
         raise DomainError(422, "INVALID_OUTBOX", "无效的业务标识")
     if not isinstance(business_version, int) or business_version <= 0:
         raise DomainError(422, "INVALID_OUTBOX", "无效的业务版本")
-    if max_attempts is not None and (
-        not isinstance(max_attempts, int) or max_attempts <= 0
-    ):
+    if max_attempts is not None and (not isinstance(max_attempts, int) or max_attempts <= 0):
         raise DomainError(422, "INVALID_OUTBOX", "无效的最大尝试次数")
     if not isinstance(payload, dict):
         raise DomainError(422, "INVALID_OUTBOX", "Outbox 载荷必须是对象")
@@ -152,11 +150,16 @@ def _claim_due(
     status: str,
     current: datetime,
     limit: int,
+    paused_handlers: frozenset[str] | None,
 ) -> list[OutboxEvent]:
     return list(
         session.scalars(
             select(OutboxEvent)
-            .where(OutboxEvent.status == status, column <= current)
+            .where(
+                OutboxEvent.status == status,
+                column <= current,
+                ~OutboxEvent.handler.in_(paused_handlers) if paused_handlers else True,
+            )
             .order_by(column, OutboxEvent.id)
             .limit(limit)
             .with_for_update(skip_locked=True)
@@ -171,6 +174,7 @@ def claim_events(
     limit: int = 10,
     lease_seconds: int = 30,
     now: datetime | None = None,
+    paused_handlers: frozenset[str] | None = None,
 ) -> list[ClaimedEvent]:
     """Lease due or expired events. Concurrent workers use SKIP LOCKED."""
 
@@ -191,6 +195,7 @@ def claim_events(
         status="PENDING",
         current=current,
         limit=limit,
+        paused_handlers=paused_handlers,
     )
     remaining = limit - len(rows)
     if remaining:
@@ -201,6 +206,7 @@ def claim_events(
                 status="PROCESSING",
                 current=current,
                 limit=remaining,
+                paused_handlers=paused_handlers,
             )
         )
     claimed: list[ClaimedEvent] = []

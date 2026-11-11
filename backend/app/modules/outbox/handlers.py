@@ -53,9 +53,7 @@ HANDLERS: Mapping[str, Handler] = {
 }
 
 
-def get_handler(
-    name: str, handlers: Mapping[str, Handler] | None = None
-) -> Handler:
+def get_handler(name: str, handlers: Mapping[str, Handler] | None = None) -> Handler:
     registry = HANDLERS if handlers is None else handlers
     try:
         return registry[name]

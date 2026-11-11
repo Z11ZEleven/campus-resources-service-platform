@@ -66,5 +66,7 @@ def test_room_allocation_materializes_active_seats_and_releases_exact_source(fac
             source_module="M2",
             source_id=903,
             actor=data["users"]["admin"],
+            start_at=data["start"],
+            end_at=data["end"],
         )
         assert all(row.status == "RELEASED" and row.released_at for row in allocations)

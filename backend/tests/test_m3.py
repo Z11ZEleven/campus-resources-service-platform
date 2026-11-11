@@ -325,7 +325,8 @@ def test_maintenance_preserves_existing_use_and_blocks_new_m1_m2(client, data, f
         assert block(session, order["id"]).status == "RELEASED"
     with factory() as session, session.begin():
         release_source(session, room_id=data["room"], source_module=existing_module,
-                       source_id=301, actor=data["users"]["student" if existing_module == "M1" else "admin"])
+                       source_id=301, actor=data["users"]["student" if existing_module == "M1" else "admin"],
+                       **({"start_at": data["start"], "end_at": data["end"]} if existing_module == "M2" else {}))
         reserve(session, data, 303)
 
 

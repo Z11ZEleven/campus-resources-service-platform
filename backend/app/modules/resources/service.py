@@ -9,6 +9,7 @@ endpoint exposes resource mutation to end users.
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -101,15 +102,38 @@ def _existing(session, module, source_id):
     )
 
 
-def _reuse(existing, room_id, seat_id, start=None, end=None):
+def _advance_revision(session, room, row, revision, actor):
+    row.revision = revision
+    row.is_versioned = True
+    room.resource_version += 1
+    record_operation(
+        session,
+        module=row.source_module,
+        business_id=row.source_id,
+        action="ADVANCE_RESOURCE_REVISION",
+        actor_id=actor.user_id,
+        from_status=row.status,
+        to_status=row.status,
+        note=str(revision),
+    )
+    session.flush()
+
+
+def _reuse(session, room, existing, seat_id, actor, start=None, end=None, revision=None):
     if existing is None:
         return None
+    if revision is None and existing.is_versioned:
+        raise conflict("版本化来源必须提供版本")
+    if revision is not None and revision < existing.revision:
+        raise conflict("来源版本已过期")
     if existing.status != "ACTIVE":
         raise conflict("该业务来源已释放，不允许重新激活")
-    if (existing.room_id, existing.seat_id) != (room_id, seat_id):
+    if (existing.room_id, existing.seat_id) != (room.id, seat_id):
         raise conflict("相同来源不能更换资源")
     if start is not None and (existing.start_at, existing.end_at) != (start, end):
         raise conflict("相同来源的时段不一致")
+    if revision is not None and (revision > existing.revision or not existing.is_versioned):
+        _advance_revision(session, room, existing, revision, actor)
     return existing
 
 
@@ -125,7 +149,9 @@ def _overlap(session, room_id, start, end, seat_id=None):
     return session.scalar(query.limit(1)) is not None
 
 
-def _insert(session, room, *, module, source_id, seat_id, start, end, actor):
+def _insert(
+    session, room, *, module, source_id, seat_id, start, end, actor, revision=None, released=False
+):
     if source_id <= 0:
         raise DomainError(422, "INVALID_SOURCE", "来源 ID 必须大于零")
     row = ResourceBlock(
@@ -135,11 +161,32 @@ def _insert(session, room, *, module, source_id, seat_id, start, end, actor):
         source_id=source_id,
         start_at=start,
         end_at=end,
-        status="ACTIVE",
+        status="RELEASED" if released else "ACTIVE",
+        released_at=utcnow() if released else None,
+        revision=revision if revision is not None else 0,
+        is_versioned=revision is not None,
     )
-    session.add(row)
+    session.flush()  # Flush unrelated pending work outside the conflict handler.
+    try:
+        with session.begin_nested():
+            session.add(row)
+            session.flush()
+    except IntegrityError as exc:
+        if exc.orig.args and exc.orig.args[0] == 1062 and "uq_block_source" in str(exc.orig):
+            raise conflict("业务来源已存在") from exc
+        raise
     room.resource_version += 1
     session.flush()
+    if released:
+        record_operation(
+            session,
+            module=module,
+            business_id=source_id,
+            action="RELEASE_RESOURCE",
+            actor_id=actor.user_id,
+            to_status="RELEASED",
+        )
+        return row
     from app.modules.resources.allocations import materialize_source
 
     materialize_source(session, row)
@@ -154,6 +201,49 @@ def _insert(session, room, *, module, source_id, seat_id, start, end, actor):
     return row
 
 
+def lock_m1_user(session, user_id):
+    """Lock a user actor after the room and before the M1 source sequence."""
+    from app.modules.auth.models import User
+
+    if session.scalar(select(User.id).where(User.id == user_id).with_for_update()) is None:
+        raise not_found()
+
+
+def _lock_m1_source_sequence(session):
+    from sqlalchemy.dialects.mysql import insert
+
+    from app.modules.resources.models import M1SourceSequence
+
+    session.execute(
+        insert(M1SourceSequence).values(id=1, high_water=0).on_duplicate_key_update(id=1)
+    )
+    return session.scalar(
+        select(M1SourceSequence)
+        .where(M1SourceSequence.id == 1)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
+def allocate_m1_source_id(session, *, reservation_floor=0):
+    """Allocate under a shared lock also held by legacy M1 source writers."""
+    sequence = _lock_m1_source_sequence(session)
+    from sqlalchemy import func
+
+    maximum = (
+        session.scalar(
+            select(func.max(ResourceBlock.source_id)).where(ResourceBlock.source_module == "M1")
+        )
+        or 0
+    )
+    value = max(sequence.high_water, maximum, reservation_floor) + 1
+    if value > 2**64 - 1:
+        raise conflict("M1 来源标识空间已耗尽")
+    sequence.high_water = value
+    session.flush()
+    return value
+
+
 def reserve_seat(
     session: Session,
     *,
@@ -163,15 +253,33 @@ def reserve_seat(
     start_at: datetime,
     end_at: datetime,
     actor: Principal,
+    revision: int | None = None,
 ) -> ResourceBlock:
     actor.require("m1:create")
     if actor.identity_type != "STUDENT":
         raise forbidden()
+    if revision is not None and (
+        not isinstance(revision, int)
+        or isinstance(revision, bool)
+        or revision < 0
+        or revision > 2**64 - 1
+    ):
+        raise DomainError(422, "INVALID_REVISION", "来源版本必须为非负整数")
     room = lock_room(session, room_id)
+    lock_m1_user(session, actor.user_id)
     # Caller validates business status first. Retry of the same active source
     # can be returned even after time has advanced, but cannot change payload.
     start, end = to_utc(start_at), to_utc(end_at)
-    reused = _reuse(_existing(session, "M1", reservation_id), room_id, seat_id, start, end)
+    reused = _reuse(
+        session,
+        room,
+        _existing(session, "M1", reservation_id),
+        seat_id,
+        actor,
+        start,
+        end,
+        revision,
+    )
     if reused:
         return reused
     check_booking_eligibility(actor, room)
@@ -183,6 +291,8 @@ def reserve_seat(
         raise conflict("座位已停用")
     if _overlap(session, room.id, start, end, seat_id):
         raise conflict("座位或教室时段已被占用/限制")
+    sequence = _lock_m1_source_sequence(session)
+    sequence.high_water = max(sequence.high_water, reservation_id)
     return _insert(
         session,
         room,
@@ -192,6 +302,7 @@ def reserve_seat(
         start=start,
         end=end,
         actor=actor,
+        revision=revision,
     )
 
 
@@ -204,13 +315,23 @@ def occupy_room(
     start_at: datetime,
     end_at: datetime,
     actor: Principal,
+    revision: int | None = None,
 ) -> ResourceBlock:
     actor.require("m2:approve")
     if actor.user_id == applicant_id:
         raise forbidden()
+    if revision is not None and (
+        not isinstance(revision, int)
+        or isinstance(revision, bool)
+        or revision < 0
+        or revision > 2**64 - 1
+    ):
+        raise DomainError(422, "INVALID_REVISION", "来源版本必须为非负整数")
     room = lock_room(session, room_id)
     start, end = to_utc(start_at), to_utc(end_at)
-    reused = _reuse(_existing(session, "M2", application_id), room_id, None, start, end)
+    reused = _reuse(
+        session, room, _existing(session, "M2", application_id), None, actor, start, end, revision
+    )
     if reused:
         return reused
     applicant = load_principal(session, applicant_id)
@@ -230,6 +351,7 @@ def occupy_room(
         start=start,
         end=end,
         actor=actor,
+        revision=revision,
     )
 
 
@@ -239,10 +361,20 @@ def start_maintenance(
     room_id: int,
     work_order_id: int,
     actor: Principal,
+    revision: int | None = None,
 ) -> ResourceBlock:
     actor.require("m3:start")
+    if revision is not None and (
+        not isinstance(revision, int)
+        or isinstance(revision, bool)
+        or revision < 0
+        or revision > 2**64 - 1
+    ):
+        raise DomainError(422, "INVALID_REVISION", "来源版本必须为非负整数")
     room = lock_room(session, room_id)
-    reused = _reuse(_existing(session, "M3", work_order_id), room_id, None)
+    reused = _reuse(
+        session, room, _existing(session, "M3", work_order_id), None, actor, revision=revision
+    )
     if reused:
         return reused
     # Existing reservations are NOT cancelled in iteration 1.
@@ -255,6 +387,7 @@ def start_maintenance(
         start=utcnow(),
         end=None,
         actor=actor,
+        revision=revision,
     )
 
 
@@ -265,17 +398,67 @@ def release_source(
     source_module: str,
     source_id: int,
     actor: Principal,
+    revision: int | None = None,
+    start_at: datetime | None = None,
+    end_at: datetime | None = None,
 ) -> ResourceBlock:
     permissions = {"M1": "m1:cancel", "M2": "m2:release", "M3": "m3:accept"}
     if source_module not in permissions:
         raise DomainError(422, "INVALID_SOURCE", "无效来源")
     actor.require(permissions[source_module])
+    if revision is not None and (
+        not isinstance(revision, int)
+        or isinstance(revision, bool)
+        or revision < 0
+        or revision > 2**64 - 1
+    ):
+        raise DomainError(422, "INVALID_REVISION", "来源版本必须为非负整数")
+    if (source_module == "M2" and (start_at is None or end_at is None)) or (
+        source_module != "M2" and (start_at is not None or end_at is not None)
+    ):
+        raise DomainError(422, "INVALID_PERIOD", "M2 释放须提供原时段，M1/M3 不接受时段")
+    try:
+        start = to_utc(start_at) if start_at is not None else None
+        end = to_utc(end_at) if end_at is not None else None
+    except ValueError as exc:
+        raise DomainError(422, "TIMEZONE_REQUIRED", "时间必须包含时区") from exc
+    if start is not None and end <= start:
+        raise DomainError(422, "INVALID_PERIOD", "时段必须为正时长")
     room = lock_room(session, room_id)
     row = _existing(session, source_module, source_id)
-    if row is None or row.room_id != room.id:
-        raise not_found()
+    if row is None:
+        if revision is None:
+            raise not_found()
+        return _insert(
+            session,
+            room,
+            module=source_module,
+            source_id=source_id,
+            seat_id=None,
+            start=start,
+            end=end,
+            actor=actor,
+            revision=revision,
+            released=True,
+        )
+    if row.room_id != room.id:
+        raise conflict("相同来源不能更换资源")
+    if start is not None and (row.start_at, row.end_at) != (start, end):
+        raise conflict("相同来源的时段不一致")
+    if revision is None and row.is_versioned:
+        raise conflict("版本化来源必须提供版本")
+    if revision is not None and revision < row.revision:
+        raise conflict("来源版本已过期")
     if row.status == "RELEASED":
+        if revision is not None and (revision > row.revision or not row.is_versioned):
+            _advance_revision(session, room, row, revision, actor)
         return row
+    if revision is not None and revision == row.revision:
+        raise conflict("相同版本状态不一致")
+    if revision is None and row.revision == 2**64 - 1:
+        raise conflict("来源版本已达上限")
+    row.revision = revision if revision is not None else row.revision + 1
+    row.is_versioned = revision is not None
     row.status, row.released_at = "RELEASED", utcnow()
     from app.modules.resources.allocations import release_allocations
 
@@ -304,6 +487,9 @@ def _slot_state(room, seat, slot_start, matches, opened=None):
     local_end = local_start + timedelta(hours=1)
     if not room.is_active or not seat.is_active:
         return "DISABLED", None
+    restrictions = [row for row in matches if row.source_module == "D"]
+    if restrictions:
+        return "DISABLED", min(restrictions, key=lambda row: row.id)
     maintenance = [row for row in matches if row.source_module == "M3"]
     if maintenance:
         return "MAINTENANCE", min(maintenance, key=lambda row: row.id)
@@ -453,3 +639,51 @@ from app.modules.resources.management import (  # noqa: E402,F401
     save_room,
     save_seat,
 )
+
+
+def acquire_m1_reservation(session, *, room, seat, reservation_id, start, end, actor):
+    """Acquire a typed M1 source after the caller holds the room lock."""
+    from app.modules.resources.allocation_models import SeatAllocation
+    from app.modules.resources.eligibility import seat_available
+
+    if not seat_available(session, room, seat, start, end):
+        raise conflict("座位或教室时段不可用")
+    row = _insert(
+        session,
+        room,
+        module="M1",
+        source_id=reservation_id,
+        seat_id=seat.id,
+        start=start,
+        end=end,
+        actor=actor,
+    )
+    allocation = session.scalar(select(SeatAllocation).where(SeatAllocation.block_id == row.id))
+    allocation.m1_reservation_id = reservation_id
+    session.flush()
+    return row
+
+
+def release_m1_reservation(session, *, room, reservation_id, actor):
+    """Release only the specified M1 source after business authorization."""
+    from app.modules.resources.allocations import release_allocations
+
+    row = _existing(session, "M1", reservation_id)
+    if row is None or row.room_id != room.id:
+        raise not_found()
+    if row.status == "ACTIVE":
+        row.status = "RELEASED"
+        row.released_at = utcnow()
+        room.resource_version += 1
+        release_allocations(session, row)
+        record_operation(
+            session,
+            module="M1",
+            business_id=reservation_id,
+            action="RELEASE_RESOURCE",
+            actor_id=actor.user_id,
+            from_status="ACTIVE",
+            to_status="RELEASED",
+        )
+    session.flush()
+    return row

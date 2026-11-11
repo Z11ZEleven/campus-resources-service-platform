@@ -29,6 +29,7 @@ def test_schema_matches_models_and_empty_database_replay(factory, mysql_engine):
         "d_room_opening_rules",
         "d_room_opening_exceptions",
         "d_seat_allocations",
+        "d_m1_source_sequence",
         "m1_reservations",
         "m1_reservation_events",
         "m1_violations",
@@ -44,6 +45,7 @@ def test_schema_matches_models_and_empty_database_replay(factory, mysql_engine):
             "m3_work_order_escalations",
             "d_notifications",
             "d_outbox_events",
+            "d_admin_restriction_requests",
             "alembic_version",
         }
     )
@@ -125,13 +127,10 @@ def test_outbox_schema_supports_leases_and_audit_actor_types(mysql_engine):
     assert outbox["available_at"]["type"].fsp == 3
     assert outbox["max_attempts"]["nullable"]
     outbox_uniques = {
-        tuple(item["column_names"])
-        for item in inspector.get_unique_constraints("d_outbox_events")
+        tuple(item["column_names"]) for item in inspector.get_unique_constraints("d_outbox_events")
     }
     assert ("source_module", "event_key") in outbox_uniques
-    outbox_indexes = {
-        item["name"] for item in inspector.get_indexes("d_outbox_events")
-    }
+    outbox_indexes = {item["name"] for item in inspector.get_indexes("d_outbox_events")}
     assert {"ix_outbox_due", "ix_outbox_lease"} <= outbox_indexes
 
     audit = {column["name"]: column for column in inspector.get_columns("d_operation_logs")}
@@ -141,8 +140,7 @@ def test_outbox_schema_supports_leases_and_audit_actor_types(mysql_engine):
     assert not audit["result"]["nullable"]
     assert audit["event_key"]["nullable"]
     audit_uniques = {
-        tuple(item["column_names"])
-        for item in inspector.get_unique_constraints("d_operation_logs")
+        tuple(item["column_names"]) for item in inspector.get_unique_constraints("d_operation_logs")
     }
     assert ("module", "event_key") in audit_uniques
     foreign_keys = {
@@ -315,10 +313,10 @@ def test_m1_upgrade_backfills_legacy_sources_without_inventing_reservations(
     command.upgrade(cfg, "head")
     command.upgrade(cfg, "head")
     with mysql_engine.connect() as connection:
-        assert (
-            connection.execute(text("SELECT * FROM d_resource_blocks ORDER BY id")).all()
-            == original
-        )
+        assert [
+            tuple(row[:-2])
+            for row in connection.execute(text("SELECT * FROM d_resource_blocks ORDER BY id")).all()
+        ] == [tuple(row) for row in original]
         allocations = connection.execute(
             text("""
             SELECT source_module,source_id,seat_id,m1_reservation_id,status,released_at,start_at
@@ -346,3 +344,21 @@ def test_m1_upgrade_backfills_legacy_sources_without_inventing_reservations(
             == 1
         )
     command.check(cfg)
+
+
+def test_source_revision_prevents_lossy_downgrade(factory, data):
+    from app.modules.resources.service import start_maintenance
+
+    with factory() as session, session.begin():
+        start_maintenance(
+            session,
+            room_id=data["room"],
+            work_order_id=88888,
+            actor=data["users"]["repairer"],
+            revision=2,
+        )
+    try:
+        with pytest.raises(RuntimeError, match="source revisions would be lost"):
+            command.downgrade(Config("alembic.ini"), "0007_outbox_audit")
+    finally:
+        command.upgrade(Config("alembic.ini"), "head")

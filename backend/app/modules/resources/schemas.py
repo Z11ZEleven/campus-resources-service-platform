@@ -117,3 +117,18 @@ class ExceptionInput(Input):
 class ScheduleInput(Input):
     weekly: list[WeeklyInput] = Field(max_length=100)
     exceptions: list[ExceptionInput] = Field(default_factory=list, max_length=200)
+
+
+class AdminRestrictionInput(Input):
+    seat_id: Id | None = None
+    start_at: datetime
+    end_at: datetime
+
+
+class AdminRestrictionView(Output):
+    id: Id
+    room_id: Id
+    seat_id: Id | None
+    start_at: UtcDateTime
+    end_at: UtcDateTime
+    status: str

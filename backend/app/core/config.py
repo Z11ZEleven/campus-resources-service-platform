@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     session_minutes: int = Field(default=60, ge=1, le=1440)
     session_cookie_secure: bool = False
     session_cookie_samesite: Literal["lax", "strict"] = "lax"
+    m1_checkin_secret: SecretStr | None = None
     booking_max_hours: int = Field(default=4, ge=1, le=24)
     booking_window_days: int = Field(default=7, ge=1, le=31)
     m3_reported_timeout_hours: int = Field(default=24, ge=1, le=8760)

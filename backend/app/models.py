@@ -22,6 +22,7 @@ from app.modules.notifications.models import Notification
 from app.modules.outbox.models import OutboxEvent
 from app.modules.resources.allocation_models import SeatAllocation
 from app.modules.resources.models import (
+    AdminRestrictionRequest,
     Building,
     OpeningException,
     OpeningRule,
@@ -41,6 +42,7 @@ __all__ = [
     "Violation",
     "RoomCheckinCode",
     "CheckinAttempt",
+    "AdminRestrictionRequest",
     "Building",
     "OpeningRule",
     "OpeningException",

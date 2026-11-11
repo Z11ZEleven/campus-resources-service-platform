@@ -1,6 +1,7 @@
 from datetime import UTC, date, timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Header, Query, Request
 from sqlalchemy import func, or_, select, true
 
 from app.core.errors import not_found
@@ -8,7 +9,7 @@ from app.core.schema import Id
 from app.core.time import utcnow
 from app.modules.auth.dependencies import CurrentUser, Db
 from app.modules.auth.permissions import room_scope_predicate
-from app.modules.resources import service
+from app.modules.resources import restrictions, service
 from app.modules.resources.models import (
     Building,
     OpeningException,
@@ -18,6 +19,8 @@ from app.modules.resources.models import (
     Seat,
 )
 from app.modules.resources.schemas import (
+    AdminRestrictionInput,
+    AdminRestrictionView,
     AvailabilityView,
     BuildingInput,
     BuildingView,
@@ -231,3 +234,43 @@ def opening_schedule(room_id: Id, session: Db, user: CurrentUser):
 @router.put("/rooms/{room_id}/opening", response_model=RoomView)
 def update_schedule(room_id: Id, payload: ScheduleInput, session: Db, user: CurrentUser):
     return service.replace_schedule(session, user, room_id, payload)
+
+
+@router.post("/rooms/{room_id}/restrictions", response_model=AdminRestrictionView, status_code=201)
+def create_admin_restriction(
+    room_id: Id,
+    payload: AdminRestrictionInput,
+    request: Request,
+    session: Db,
+    user: CurrentUser,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=64)],
+):
+    return restriction_view(
+        restrictions.create_restriction(
+            session, user, room_id, payload, idempotency_key, request.state.auth_session.id
+        )
+    )
+
+
+@router.delete(
+    "/rooms/{room_id}/restrictions/{restriction_id}", response_model=AdminRestrictionView
+)
+def release_admin_restriction(
+    room_id: Id, restriction_id: Id, request: Request, session: Db, user: CurrentUser
+):
+    return restriction_view(
+        restrictions.release_restriction(
+            session, user, room_id, restriction_id, request.state.auth_session.id
+        )
+    )
+
+
+def restriction_view(block):
+    return {
+        "id": block.source_id,
+        "room_id": block.room_id,
+        "seat_id": block.seat_id,
+        "start_at": block.start_at,
+        "end_at": block.end_at,
+        "status": block.status,
+    }

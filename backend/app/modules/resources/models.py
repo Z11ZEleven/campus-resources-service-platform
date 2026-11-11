@@ -84,12 +84,18 @@ class ResourceBlock(Base):
         ),
         CheckConstraint("source_id > 0", name="ck_block_source_id"),
         CheckConstraint(
-            "(source_module = 'M1' AND seat_id IS NOT NULL AND end_at IS NOT NULL)"
+            "(status = 'RELEASED' AND start_at IS NULL AND seat_id IS NULL AND end_at IS NULL)"
+            " OR (source_module = 'M1' AND seat_id IS NOT NULL AND end_at IS NOT NULL)"
             " OR (source_module = 'M2' AND seat_id IS NULL AND end_at IS NOT NULL)"
-            " OR (source_module = 'M3' AND seat_id IS NULL)",
+            " OR (source_module = 'M3' AND seat_id IS NULL)"
+            " OR (source_module = 'D' AND start_at IS NOT NULL AND end_at IS NOT NULL)",
             name="ck_block_scope",
         ),
         CheckConstraint("end_at IS NULL OR start_at < end_at", name="ck_block_period"),
+        CheckConstraint(
+            "start_at IS NOT NULL OR (status = 'RELEASED' AND seat_id IS NULL AND end_at IS NULL)",
+            name="ck_block_start",
+        ),
         CheckConstraint(
             "(status = 'ACTIVE' AND released_at IS NULL)"
             " OR (status = 'RELEASED' AND released_at IS NOT NULL)",
@@ -103,8 +109,10 @@ class ResourceBlock(Base):
     seat_id: Mapped[int | None] = mapped_column(ForeignKey("d_seats.id"))
     source_module: Mapped[str] = mapped_column(String(8))
     source_id: Mapped[int] = mapped_column(BIGINT(unsigned=True))
-    start_at: Mapped[datetime] = mapped_column(DATETIME(fsp=3))
+    start_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=3))
     end_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=3))
+    revision: Mapped[int] = mapped_column(BIGINT(unsigned=True), default=0, server_default="0")
+    is_versioned: Mapped[bool] = mapped_column(TINYINT(1), default=False, server_default="0")
     status: Mapped[str] = mapped_column(String(16), default="ACTIVE", server_default="ACTIVE")
     released_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=3))
     created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=3), default=utcnow)
@@ -167,3 +175,23 @@ class OpeningException(Base):
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=3), default=utcnow, server_default=text("CURRENT_TIMESTAMP(3)")
     )
+
+
+class M1SourceSequence(Base):
+    __tablename__ = "d_m1_source_sequence"
+    __table_args__ = (OPTIONS,)
+    id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True)
+    high_water: Mapped[int] = mapped_column(BIGINT(unsigned=True), nullable=False)
+
+
+class AdminRestrictionRequest(Base):
+    """D-owned idempotency identity for an administrator restriction."""
+
+    __tablename__ = "d_admin_restriction_requests"
+    __table_args__ = (
+        UniqueConstraint("actor_id", "key_hash", name="uq_admin_restriction_key"),
+        OPTIONS,
+    )
+    id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True)
+    actor_id: Mapped[int] = mapped_column(ForeignKey("d_users.id"))
+    key_hash: Mapped[str] = mapped_column(String(64))

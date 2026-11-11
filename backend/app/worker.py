@@ -11,7 +11,7 @@ from app import models  # noqa: F401 - register every table before using session
 from app.core.config import get_settings
 from app.core.database import get_session_factory
 from app.core.time import utcnow
-from app.modules.outbox.handlers import Handler, PermanentOutboxError, get_handler
+from app.modules.outbox.handlers import HANDLERS, Handler, PermanentOutboxError, get_handler
 from app.modules.outbox.service import (
     LeaseLost,
     claim_events,
@@ -65,9 +65,7 @@ def _record_failure(
                     now=now,
                 )
     except LeaseLost:
-        logger.warning(
-            "outbox event %s lease was lost before failure could be recorded", event.id
-        )
+        logger.warning("outbox event %s lease was lost before failure could be recorded", event.id)
 
 
 def _process_event(
@@ -119,9 +117,7 @@ def _process_event(
                 max_seconds=retry_max_seconds,
             )
         )
-        exhausted = (
-            event.max_attempts is not None and event.attempts >= event.max_attempts
-        )
+        exhausted = event.max_attempts is not None and event.attempts >= event.max_attempts
         _record_failure(
             factory,
             event,
@@ -154,6 +150,9 @@ def run_once(
             limit=batch_size,
             lease_seconds=lease_seconds,
             now=now,
+            paused_handlers=frozenset(
+                {"m1_timer"} - (HANDLERS if handlers is None else handlers).keys()
+            ),
         )
     for event in claimed:
         _process_event(
@@ -193,13 +192,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.poll_interval is not None
         else settings.outbox_poll_interval_seconds
     )
-    batch_size = (
-        args.batch_size if args.batch_size is not None else settings.outbox_batch_size
-    )
+    batch_size = args.batch_size if args.batch_size is not None else settings.outbox_batch_size
     lease_seconds = (
-        args.lease_seconds
-        if args.lease_seconds is not None
-        else settings.outbox_lease_seconds
+        args.lease_seconds if args.lease_seconds is not None else settings.outbox_lease_seconds
     )
     retry_base_seconds = (
         args.retry_base_seconds

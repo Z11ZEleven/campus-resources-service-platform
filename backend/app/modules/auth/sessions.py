@@ -41,3 +41,17 @@ def resolve_session(session: Session, token: str) -> AuthSession:
     if not row or row.revoked_at is not None or row.expires_at <= utcnow():
         raise DomainError(401, "INVALID_SESSION", "会话无效或已过期")
     return row
+
+
+def refresh_principal(session: Session, auth_session_id: int, user_id: int):
+    """Revalidate the authenticated actor after waiting for a resource lock."""
+    session.expire_all()
+    row = session.get(AuthSession, auth_session_id, populate_existing=True)
+    if (
+        not row
+        or row.user_id != user_id
+        or row.revoked_at is not None
+        or row.expires_at <= utcnow()
+    ):
+        raise DomainError(401, "INVALID_SESSION", "会话无效或已过期")
+    return load_principal(session, row.user_id, row.identity_id)
