@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.core.http import error_body
 from app.modules.auth.dependencies import CurrentUser, Db
-from app.modules.m1 import checkin, reservations
+from app.modules.m1 import admin, checkin, reservations, violations
 from app.modules.m1.search import search_seats
 
 router = APIRouter(prefix="/api/v1/m1", tags=["M1"])
@@ -133,3 +133,54 @@ def check_in(
             headers={"Cache-Control": "no-store"},
         )
     return result
+
+
+@router.get("/violations")
+def list_violations(
+    session: Db,
+    actor: CurrentUser,
+    day: date | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    return violations.list_own(session, actor, day, page, page_size)
+
+
+@router.get("/admin/statistics")
+def statistics(
+    session: Db,
+    actor: CurrentUser,
+    start_at: datetime,
+    end_at: datetime,
+    room_id: int | None = None,
+):
+    return admin.statistics(session, actor, start_at, end_at, room_id)
+
+
+class SettingsInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    expected_version: int = Field(gt=0, le=2**64 - 1)
+    max_hours: int = Field(ge=1, le=14)
+
+
+@router.get("/admin/settings")
+def get_settings(session: Db, actor: CurrentUser):
+    return admin.read_settings(session, actor)
+
+
+@router.patch("/admin/settings")
+def patch_settings(body: SettingsInput, request: Request, session: Db, actor: CurrentUser):
+    return admin.update_settings(
+        session, actor, request.state.auth_session.id, body.expected_version, body.max_hours
+    )
+
+
+@router.get("/admin/reservations")
+def admin_reservations(
+    session: Db,
+    actor: CurrentUser,
+    room_id: int | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    return admin.list_reservations(session, actor, room_id, page, page_size)

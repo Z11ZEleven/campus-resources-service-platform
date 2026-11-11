@@ -28,7 +28,9 @@ onUnmounted(() => { window.removeEventListener('auth-expired', sessionExpired); 
       <router-link class="brand" :to="auth.user ? '/resources' : '/login'"><span class="brand-mark" aria-hidden="true">校</span><strong>校园资源</strong></router-link>
       <nav v-if="auth.user" class="primary-nav" aria-label="主导航">
         <router-link to="/resources">空间资源</router-link>
+        <router-link v-if="auth.user.permissions.includes('m1:seat:search')" to="/m1/reservations">自习预约</router-link>
         <router-link v-if="auth.user.permissions.includes('resources:manage')" to="/admin/resources">资源维护</router-link>
+        <router-link v-if="auth.user.permissions.some(permission => ['m1:statistics:read', 'm1:settings:write', 'm1:reservation:read_scoped', 'm1:checkin_code:read'].includes(permission))" to="/admin/m1">预约管理</router-link>
         <router-link to="/m3/work-orders">报修工单</router-link>
         <router-link to="/notifications" :aria-label="notificationLabel" :title="notificationLabel">
           通知中心<span v-if="notifications.unreadCount > 0" class="notification-badge" aria-hidden="true">{{ notifications.unreadCount > 99 ? '99+' : notifications.unreadCount }}</span>

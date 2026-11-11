@@ -251,6 +251,7 @@ def test_admin_history_prevents_lossy_migration_downgrade(client, data, mysql_en
             )
             == 1
         )
+    command.upgrade(Config("alembic.ini"), "head")
 
 
 @pytest.mark.parametrize("operation", ["create", "release"])

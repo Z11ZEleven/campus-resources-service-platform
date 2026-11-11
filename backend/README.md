@@ -2,7 +2,7 @@
 
 已实现 FastAPI + SQLAlchemy + MySQL 的公共基础和 M3 文字报修闭环，现包含 **18 张 D 表、5 张 M1 表、3 张 M3 表**。M3 提供上报、查询、派单、维修、完工、验收、超时升级、一次性评价及真实站内通知；对应 Vue 前端已接入。M1 T07–T10 已实现资源裁决、搜索、管理员限制、预约及签到后端提案，业务页面尚未实现；M2 业务仍待后续实施。T06 新增公共 Outbox、独立 Worker、真实站内通知接收和按操作者类型区分的审计接收。
 
-M3 接口、状态流转、权限与幂等语义见 [M3 后端](../docs/m3-backend.md)与 [超时/评价/通知扩展](../docs/m3-extensions.md)。执行 `alembic upgrade head` 会升级至 `0011_admin_restrictions`，保留原公共层表与工单数据。新增 D 通知、Outbox 和审计字段为本次用户确认的本地实现提案，待团队评审，不代表团队共识。
+M3 接口、状态流转、权限与幂等语义见 [M3 后端](../docs/m3-backend.md)与 [超时/评价/通知扩展](../docs/m3-extensions.md)。执行 `alembic upgrade head` 会升级至 `0014_service_operation_scope`，保留原公共层表与工单数据。新增 D 通知、Outbox 和审计字段为本次用户确认的本地实现提案，待团队评审，不代表团队共识。
 
 ## 1. 准备与启动
 
@@ -164,3 +164,12 @@ M1 自动提醒、违约与维修联动、M2 业务表和接口、M3 局部业�
 轮换用 --rotate；停用用 --disable。两者均审计；服务所属模块不可原地修改。命令不会输出凭据，不能用数据库手工写记录替代。生产 HTTPS 设置 SESSION_COOKIE_SECURE=true；本机 HTTP 可为 false，SESSION_MINUTES 控制会话期限。JWT_SIGNING_KEY 目前仍作为旧辅助代码配置项校验，但 HTTP 不接受 JWT。
 
 首次运行测试需要真实 MySQL 8.4 专用 *_test 库。CI 会在 pytest 后执行 alembic check；Ruff、完整测试及生产构建命令沿用上文。实际本轮结果见 [验证记录](../docs/m1/verification.md)。
+
+
+## M1 T11–T15 交付补验（2026-11-11）
+
+最新工作区提供持久化定时处理、来源HTTP接口/操作核对、维修免责、资源变更影响、管理统计及版本化参数、学生和管理页面。迁移至0014；0014将操作键唯一约束调整为服务主体与操作键，并保留外键索引。已有来源和操作历史不重置。历史段落中的“尚未实现”以最新 [验证记录](../docs/m1/verification.md#10-t11t15-交付补验2026-11-11) 为准。
+
+本轮真实MySQL完整回归329项通过，另有真实浏览器和组件行为验证。M2业务模块仍缺失，不能将M1来源接口测试当作实际M2联调。应用镜像与独立Worker部署见 [部署文档](../deploy/README.md)，当前只验证隔离本地HTTP；共享环境、HTTPS代理和生产审批未完成。
+
+浏览器验收需额外安装Python Playwright 1.58.0及Chromium，设置 `RUN_BROWSER_E2E=1` 后执行原 `pytest --require-mysql` 命令；本机已有Chrome时可设 `BROWSER_CHANNEL=chrome`。未配置测试库时仍必须失败，不能对业务库测试。

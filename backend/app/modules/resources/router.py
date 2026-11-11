@@ -193,7 +193,30 @@ def create_room(payload: RoomInput, session: Db, user: CurrentUser):
 
 
 @router.put("/rooms/{room_id}", response_model=RoomView)
-def update_room(room_id: Id, payload: RoomInput, session: Db, user: CurrentUser):
+def update_room(room_id: Id, payload: RoomInput, request: Request, session: Db, user: CurrentUser):
+    room = service.lock_room(session, room_id)
+    from app.modules.m1.reservations import refreshed_actor
+
+    user = refreshed_actor(session, request.state.auth_session.id, user)
+    user.require_for_room("resources:manage", room)
+    if room.is_active and not payload.is_active:
+        from app.modules.m1.resource_impact import apply_room_deactivation
+
+        apply_room_deactivation(session, room=room, effective_at=utcnow(), actor=user)
+    elif not room.opening_rules_enabled and (
+        payload.open_time > room.open_time or payload.close_time < room.close_time
+    ):
+        from app.modules.m1.resource_impact import apply_schedule_change
+
+        schedule = ScheduleInput(
+            weekly=[
+                {"weekday": day, "start_time": payload.open_time, "end_time": payload.close_time}
+                for day in range(7)
+            ]
+        )
+        apply_schedule_change(
+            session, room=room, payload=schedule, effective_at=utcnow(), actor=user
+        )
     return service.save_room(session, user, payload, room_id)
 
 
@@ -203,8 +226,27 @@ def create_seat(room_id: Id, payload: SeatInput, session: Db, user: CurrentUser)
 
 
 @router.put("/rooms/{room_id}/seats/{seat_id}", response_model=SeatView)
-def update_seat(room_id: Id, seat_id: Id, payload: SeatInput, session: Db, user: CurrentUser):
-    return service.save_seat(session, user, room_id, payload, seat_id)
+def update_seat(
+    room_id: Id, seat_id: Id, payload: SeatInput, request: Request, session: Db, user: CurrentUser
+):
+    from app.modules.m1.reservations import refreshed_actor
+    from app.modules.m1.resource_impact import apply_seat_deactivation
+
+    room = service.lock_room(session, room_id)
+    user = refreshed_actor(session, request.state.auth_session.id, user)
+    user.require_for_room("resources:manage", room)
+    seat = session.get(Seat, seat_id, populate_existing=True)
+    if seat is None or seat.room_id != room.id:
+        raise not_found()
+    affected = []
+    if seat.is_active and not payload.is_active:
+        affected = apply_seat_deactivation(
+            session, room=room, seat_id=seat_id, effective_at=utcnow(), actor=user
+        )
+    seat = service.save_seat(session, user, room_id, payload, seat_id)
+    result = SeatView.model_validate(seat).model_dump()
+    result.update(affected_reservation_count=len(affected), affected_reservation_ids=affected)
+    return result
 
 
 @router.get("/rooms/{room_id}/opening", response_model=ScheduleInput)
@@ -232,7 +274,16 @@ def opening_schedule(room_id: Id, session: Db, user: CurrentUser):
 
 
 @router.put("/rooms/{room_id}/opening", response_model=RoomView)
-def update_schedule(room_id: Id, payload: ScheduleInput, session: Db, user: CurrentUser):
+def update_schedule(
+    room_id: Id, payload: ScheduleInput, request: Request, session: Db, user: CurrentUser
+):
+    from app.modules.m1.reservations import refreshed_actor
+    from app.modules.m1.resource_impact import apply_schedule_change
+
+    room = service.lock_room(session, room_id)
+    user = refreshed_actor(session, request.state.auth_session.id, user)
+    user.require_for_room("resources:manage", room)
+    apply_schedule_change(session, room=room, payload=payload, effective_at=utcnow(), actor=user)
     return service.replace_schedule(session, user, room_id, payload)
 
 

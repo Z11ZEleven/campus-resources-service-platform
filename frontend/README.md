@@ -58,3 +58,19 @@ M3 入口为 `/m3/work-orders`，详情为 `/m3/work-orders/:id`，通知中心�
 浏览器修改请求自动从 campus_csrf 读取会话绑定校验值；请求客户端不保存可重放会话 Token。开发代理保留原始 Host，生产须同源反向代理 /api 并启用 Secure Cookie。
 
 M1 表模型不代表搜索预约、签到等业务页面已交付；本轮范围及待定事项见 [基础契约](../docs/m1/contracts.md)。
+
+## M1 验收与交付
+
+`npm test` 执行管理页组件行为测试（统计展示、参数版本提交、局部权限下不请求全局配置）；`npm run build` 执行类型检查和生产构建。
+
+真实浏览器验证由后端 `tests/test_m1_browser.py` 启动独立 Uvicorn/Vite，连接显式配置的 MySQL `*_test` 数据库，使用合成用户和可控时钟；不拦截或伪造业务 HTTP 响应。测试验证登录、管理统计/编码、预约、刷新、取消、历史复用、新单签到和越权跳转。
+
+在已安装后端依赖、前端 `npm ci` 以及 Python Playwright 1.58.0 / Chromium 后，从 backend 运行：
+
+```bash
+RUN_BROWSER_E2E=1 python -m pytest --require-mysql tests/test_m1_browser.py -q -s
+```
+
+运行前设置 `TEST_DATABASE_URL`。本机如使用已有 Chrome，可设置 `BROWSER_CHANNEL=chrome`；若 Playwright 安装在另一 Python 环境，可通过 `PLAYWRIGHT_PYTHON` 指定解释器。CI 显式开启浏览器测试，未设置本地开关时会跳过并报告，不计为验收通过。
+
+交付镜像见 `frontend/Dockerfile` 和 `deploy/compose.app.yml`。当前部署验证仅覆盖本地 HTTP；HTTPS 及共享环境验收限制见部署文档。

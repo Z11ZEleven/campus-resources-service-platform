@@ -46,6 +46,8 @@ def test_schema_matches_models_and_empty_database_replay(factory, mysql_engine):
             "d_notifications",
             "d_outbox_events",
             "d_admin_restriction_requests",
+            "d_resource_operations",
+            "d_system_settings",
             "alembic_version",
         }
     )

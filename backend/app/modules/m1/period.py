@@ -10,7 +10,7 @@ def precise_utcnow():
     return datetime.now(UTC)
 
 
-def validate_booking_period(start_at, end_at, *, now=None):
+def validate_booking_period(start_at, end_at, *, now=None, max_hours=4):
     try:
         local_values = [
             value.astimezone(BUSINESS_TZ)
@@ -29,8 +29,8 @@ def validate_booking_period(start_at, end_at, *, now=None):
     local_start = as_utc(start).astimezone(BUSINESS_TZ)
     local_end = as_utc(end).astimezone(BUSINESS_TZ)
     today = as_utc(current).astimezone(BUSINESS_TZ).date()
-    if start < current or not timedelta(hours=1) <= end - start <= timedelta(hours=4):
-        raise DomainError(422, "INVALID_PERIOD", "预约须从当前时刻起且持续一至四小时")
+    if start < current or not timedelta(hours=1) <= end - start <= timedelta(hours=max_hours):
+        raise DomainError(422, "INVALID_PERIOD", "预约须从当前时刻起且不超过最大预约时长")
     if (
         local_start.date() != today
         or local_end.date() != today

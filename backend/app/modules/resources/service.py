@@ -102,6 +102,14 @@ def _existing(session, module, source_id):
     )
 
 
+def _audit_identity(actor):
+    from app.modules.auth.models import ServicePrincipal
+
+    if isinstance(actor, ServicePrincipal):
+        return {"actor_type": "SERVICE", "service_principal_id": actor.id}
+    return {"actor_id": actor.user_id}
+
+
 def _advance_revision(session, room, row, revision, actor):
     row.revision = revision
     row.is_versioned = True
@@ -111,7 +119,7 @@ def _advance_revision(session, room, row, revision, actor):
         module=row.source_module,
         business_id=row.source_id,
         action="ADVANCE_RESOURCE_REVISION",
-        actor_id=actor.user_id,
+        **_audit_identity(actor),
         from_status=row.status,
         to_status=row.status,
         note=str(revision),
@@ -183,7 +191,7 @@ def _insert(
             module=module,
             business_id=source_id,
             action="RELEASE_RESOURCE",
-            actor_id=actor.user_id,
+            **_audit_identity(actor),
             to_status="RELEASED",
         )
         return row
@@ -195,7 +203,7 @@ def _insert(
         module=module,
         business_id=source_id,
         action="ACQUIRE_RESOURCE",
-        actor_id=actor.user_id,
+        **_audit_identity(actor),
         to_status="ACTIVE",
     )
     return row
@@ -377,7 +385,7 @@ def start_maintenance(
     )
     if reused:
         return reused
-    # Existing reservations are NOT cancelled in iteration 1.
+    # Caller applies M1 impact through its public callback in the same transaction.
     return _insert(
         session,
         room,
@@ -681,9 +689,69 @@ def release_m1_reservation(session, *, room, reservation_id, actor):
             module="M1",
             business_id=reservation_id,
             action="RELEASE_RESOURCE",
-            actor_id=actor.user_id,
+            actor_id=actor.user_id if actor is not None else None,
+            actor_type="USER" if actor is not None else "SYSTEM",
             from_status="ACTIVE",
             to_status="RELEASED",
         )
     session.flush()
     return row
+
+
+def apply_service_source(session, *, room, module, source_id, active, revision, start, end, actor):
+    """Apply a pre-authorized M2/M3 source while the caller holds the room lock."""
+    from app.modules.resources.allocations import release_allocations
+    from app.modules.resources.opening import is_open
+
+    existing = _existing(session, module, source_id)
+    if existing:
+        if existing.room_id != room.id:
+            raise conflict("相同来源不能更换资源")
+        if revision < existing.revision:
+            raise conflict("来源版本已过期")
+        if module == "M2" and (existing.start_at, existing.end_at) != (start, end):
+            raise conflict("相同来源的时段不一致")
+        if existing.status == "RELEASED" and active:
+            raise conflict("来源已终止，不允许重新激活")
+        if revision == existing.revision:
+            if active != (existing.status == "ACTIVE"):
+                raise conflict("相同版本状态不一致")
+            return existing, False
+        if not active and existing.status == "ACTIVE":
+            existing.status, existing.released_at = "RELEASED", utcnow()
+            release_allocations(session, existing)
+        _advance_revision(session, room, existing, revision, actor)
+        return existing, False
+    if not active:
+        return _insert(
+            session,
+            room,
+            module=module,
+            source_id=source_id,
+            seat_id=None,
+            start=start,
+            end=end,
+            actor=actor,
+            revision=revision,
+            released=True,
+        ), False
+    if not room.is_active:
+        raise conflict("教室已停用")
+    if module == "M2":
+        if not is_open(session, room, start, end):
+            raise conflict("时段不在教室开放区间内")
+        if _overlap(session, room.id, start, end):
+            raise conflict("整教室时段与已有预约或维修冲突")
+    else:
+        start, end = utcnow(), None
+    return _insert(
+        session,
+        room,
+        module=module,
+        source_id=source_id,
+        seat_id=None,
+        start=start,
+        end=end,
+        actor=actor,
+        revision=revision,
+    ), True
