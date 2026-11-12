@@ -34,6 +34,8 @@ from app.modules.resources.models import (
     Seat,
     SeatStatusSummary,
 )
+from app.modules.resources.operation_models import ResourceOperation
+from app.modules.settings.models import SystemSetting
 
 __all__ = [
     "RoleScope", "Application", "ApplicationEvent", "ApprovalStep", "ResourceJob", "ResourceCommand",
@@ -60,6 +62,8 @@ __all__ = [
     "WorkOrderRating",
     "Notification",
     "OutboxEvent",
+    "ResourceOperation",
+    "SystemSetting",
     "ResourceBlock",
     "Room",
     "Seat",

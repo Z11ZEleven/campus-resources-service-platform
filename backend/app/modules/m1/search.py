@@ -17,7 +17,12 @@ def search_seats(
         raise forbidden()
     if not actor.has_any("m1:seat:search") or not actor.has_any("m1:reservation:create"):
         raise forbidden()
-    start, end = validate_booking_period(start_at, end_at, now=precise_utcnow())
+    from app.modules.settings.service import read_int
+
+    max_hours, _version = read_int(session, "m1.max_hours", 4)
+    start, end = validate_booking_period(
+        start_at, end_at, now=precise_utcnow(), max_hours=max_hours
+    )
     query = (
         select(Room, Seat)
         .join(Seat, Seat.room_id == Room.id)

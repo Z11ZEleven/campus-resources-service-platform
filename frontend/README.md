@@ -47,7 +47,7 @@ npm run build
 
 各模块增加自己的 api/m1.ts、views/m1 等，不重新建登录、Pinia 或请求客户端。菜单与按钮可按角色展示，但不能替代后端鉴权。
 
-资源示例页显示前 100 间教室、08:00–22:00 状态；接口支持分页和完整 24 小时。M1 预约业务页面尚未实现；M2 两级审批页面已接入。
+资源示例页显示前 100 间教室、08:00–22:00 状态；接口支持分页和完整 24 小时。M1 预约与管理页面、M2 两级审批页面均已接入。
 
 M3 入口为 `/m3/work-orders`，详情为 `/m3/work-orders/:id`，通知中心为 `/notifications`。操作按当前角色、归属及状态显示；仅原报修人可在完成后评分一次。升级保持工单状态和维修限制不变，物业管理员可手动补扫；导航自动查询未读数，通知列表需刷新查看新消息。
 
@@ -56,3 +56,11 @@ M3 入口为 `/m3/work-orders`，详情为 `/m3/work-orders/:id`，通知中心�
 ## M2 两级审批
 
 入口 `/m2/applications`、`/m2/approval-tasks`；通知可跳转 `/m2/applications/{id}`。按完整 M2 文档提供所有有效身份申请、两级进度、本人撤回、按范围审批与资源确认状态。不是旧单级示例。运行须同时启动主应用和独立 D 资源服务，见 [M2 实现与运行](../docs/m2-implementation.md)。
+
+## M1 后续交付与跨模块验收
+
+M1 学生入口 `/m1/reservations/:id?`、管理入口 `/admin/m1`；M2 原有申请/待办、M3 工单和通知导航保持可用，登录跳转及通知跳转白名单同时支持三个模块。运行 `npm test` 执行组件和跳转回归，`npm run build` 包含类型检查。
+
+真实浏览器验证由 backend 的 `tests/test_m1_browser.py` 启动 Uvicorn/Vite 并连接专用 MySQL `*_test` 数据库；不伪造业务 HTTP。安装 Python Playwright 1.58.0/Chromium 后，设置 `TEST_DATABASE_URL` 并从 backend 运行 `RUN_BROWSER_E2E=1 .venv/bin/python -m pytest --require-mysql tests/test_m1_browser.py -q -s`。已有系统 Chromium 可通过 `BROWSER_EXECUTABLE_PATH` 指定，`PLAYWRIGHT_PYTHON` 可指定已安装 Playwright 的解释器；CI 使用下载的 Chromium。
+
+镜像与同源代理配置见 deploy/README.md；生产 HTTPS、共享部署和人工审批仍须另行验收。

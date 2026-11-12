@@ -117,7 +117,7 @@ def test_conflict_rolls_back_and_history_seat_cannot_be_reused(client, data, fac
     assert history["items"][0]["resource_snapshot"]["seat_no"]
 
 
-def test_timer_worker_does_not_complete_unimplemented_tasks(client, data, factory):
+def test_timer_worker_processes_registered_tasks(client, data, factory, monkeypatch):
     from app.worker import run_once
 
     actor = data["users"]["student"]
@@ -135,12 +135,14 @@ def test_timer_worker_does_not_complete_unimplemented_tasks(client, data, factor
         ).status_code
         == 201
     )
-    run_once(factory, worker_id="test", now=to_utc(data["end"]) + timedelta(hours=1))
+    now = to_utc(data["end"]) + timedelta(hours=1)
+    monkeypatch.setattr("app.modules.m1.period.precise_utcnow", lambda: now)
+    run_once(factory, worker_id="test", now=now)
     with factory() as session:
         timers = list(session.scalars(select(OutboxEvent).where(OutboxEvent.handler == "m1_timer")))
         assert len(timers) == 4
         assert all(
-            t.status == "PENDING" and t.max_attempts is None and t.attempts == 0 for t in timers
+            t.status == "SUCCEEDED" and t.max_attempts is None and t.attempts == 1 for t in timers
         )
 
 
