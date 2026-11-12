@@ -33,7 +33,7 @@ npm run build
 ## 集成入口
 
 - src/api/request.ts：唯一 Axios 实例与错误解析。
-- src/stores/auth.ts：当前用户、登录/退出；Token 只放内存，刷新后重新登录。
+- src/stores/auth.ts：当前用户、登录/退出；使用 HttpOnly Cookie 会话，刷新时从 /auth/me 恢复；退出撤销服务端会话，支持有效身份选择。
 - src/router/index.ts：将模块路由添加到 catch-all 前。
 - src/api/resources.ts：公共资源类型与查询。
 - src/views/ResourcesView.vue：真实后端数据示例，没有模拟预约按钮。
@@ -47,7 +47,7 @@ npm run build
 
 各模块增加自己的 api/m1.ts、views/m1 等，不重新建登录、Pinia 或请求客户端。菜单与按钮可按角色展示，但不能替代后端鉴权。
 
-资源示例页显示前 100 间教室、08:00–22:00 状态；接口支持分页和完整 24 小时。M1/M2 业务页面尚未实现。
+资源示例页显示前 100 间教室、08:00–22:00 状态；接口支持分页和完整 24 小时。M1 预约业务页面尚未实现；M2 两级审批页面已接入。
 
 M3 入口为 `/m3/work-orders`，详情为 `/m3/work-orders/:id`，通知中心为 `/notifications`。操作按当前角色、归属及状态显示；仅原报修人可在完成后评分一次。升级保持工单状态和维修限制不变，物业管理员可手动补扫；导航自动查询未读数，通知列表需刷新查看新消息。
 

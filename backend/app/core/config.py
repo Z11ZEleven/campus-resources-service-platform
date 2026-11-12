@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,6 +22,10 @@ class Settings(BaseSettings):
     jwt_issuer: str = "campus-resources"
     jwt_audience: str = "campus-web"
     access_token_minutes: int = Field(default=60, ge=1, le=1440)
+    session_minutes: int = Field(default=60, ge=1, le=1440)
+    session_cookie_secure: bool = False
+    session_cookie_samesite: Literal["lax", "strict"] = "lax"
+    m1_checkin_secret: SecretStr | None = None
     booking_max_hours: int = Field(default=4, ge=1, le=24)
     booking_window_days: int = Field(default=7, ge=1, le=31)
     m3_reported_timeout_hours: int = Field(default=24, ge=1, le=8760)
@@ -42,6 +47,12 @@ class Settings(BaseSettings):
         if value is not None and value.get_secret_value().startswith("REPLACE_"):
             raise ValueError("Replace RESOURCE_SERVICE_KEY with an independent random key")
         return value
+
+    outbox_poll_interval_seconds: float = Field(default=2.0, ge=0.1, le=300)
+    outbox_batch_size: int = Field(default=10, ge=1, le=100)
+    outbox_lease_seconds: int = Field(default=30, ge=1, le=3600)
+    outbox_retry_base_seconds: int = Field(default=5, ge=1, le=3600)
+    outbox_retry_max_seconds: int = Field(default=300, ge=1, le=86400)
 
     @field_validator("jwt_signing_key")
     @classmethod

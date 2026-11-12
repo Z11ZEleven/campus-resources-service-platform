@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Response
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
 
@@ -9,10 +9,9 @@ from app.core.database import get_session_factory
 from app.core.errors import DomainError
 from app.core.schema import DecimalId
 from app.modules.audit.service import record_operation
-from app.modules.auth.dependencies import Db, bearer
-from app.modules.auth.permissions import Principal, load_principal
+from app.modules.auth.dependencies import Db, bearer, current_user
+from app.modules.auth.permissions import Principal
 from app.modules.auth.scopes import scope_grants
-from app.modules.auth.security import token_user_id
 from app.modules.m2 import service
 from app.modules.m2.dispatch import dispatch_one
 from app.modules.m2.models import Application, ApplicationEvent, ApprovalStep, ResourceJob
@@ -31,12 +30,15 @@ from app.modules.resources.schemas import RoomView
 router = APIRouter(prefix="/api/v1/m2", tags=["M2 两级审批"])
 
 
-def actor_identity(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
-    if credentials is None:
-        raise DomainError(401, "NOT_AUTHENTICATED", "请先登录")
+def actor_identity(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+):
     # 鉴权事务先结束，审批编排的网络阶段没有请求级 Db 事务悬挂。
     with get_session_factory()() as session, session.begin():
-        return load_principal(session, token_user_id(credentials.credentials))
+        # Reuse revocable sessions, selected identity and cookie CSRF checks,
+        # while closing this transaction before any resource-service request.
+        return current_user(request, session, credentials)
 
 
 Actor = Annotated[Principal, Depends(actor_identity)]

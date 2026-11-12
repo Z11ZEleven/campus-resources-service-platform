@@ -22,6 +22,8 @@ def run_migrations_offline():
 def run_migrations_online():
     engine = create_engine(get_settings().database_url)
     with engine.connect() as connection:
+        connection.exec_driver_sql("SET time_zone = '+00:00'")
+        connection.commit()
         context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
         with context.begin_transaction():
             context.run_migrations()

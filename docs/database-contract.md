@@ -1,5 +1,7 @@
 # 数据库统一契约
 
+> **2026-10-22 更新**：T01–T05 新增 0004–0006 迁移；当前 17 张 D 表、5 张 M1 表、3 张 M3 表。下文 §2 为原 0001–0003 字段基线，新结构及兼容变化详见 [M1 基础契约](m1/contracts.md)。
+
 > 本文件是 M1、M2、M3 和 D 共同使用的字段基线。实现以当前 Alembic 迁移和 SQLAlchemy 模型为准；修改公共字段必须先更新本文件并由各模块评审。
 
 ## 1. 全局约定
@@ -38,7 +40,7 @@
 | 字段 | 类型 | 可空 | 约束/用途 |
 |---|---|---:|---|
 | `id` | BIGINT UNSIGNED | 否 | 主键 |
-| `user_id` | BIGINT UNSIGNED | 否 | FK → `d_users.id`；当前一人一个身份 |
+| `user_id` | BIGINT UNSIGNED | 否 | FK → `d_users.id`；0004 起支持一人多身份 |
 | `identity_type` | VARCHAR(20) | 否 | `STUDENT` / `TEACHER` / `STAFF` |
 | `identity_no` | VARCHAR(64) | 否 | 学号或工号；与类型组合唯一 |
 | `department_code` | VARCHAR(32) | 否 | 与 `d_rooms.department_code` 使用同一编码 |
@@ -55,7 +57,7 @@
 | `role_code` | VARCHAR(32) | 否 | `USER` / `ROOM_ADMIN` / `PROPERTY_ADMIN` / `REPAIRER` / `SYS_ADMIN` / `DEPT_ADMIN` / `CAMPUS_ADMIN` |
 | `created_at` | DATETIME(3) | 否 | UTC |
 
-唯一约束：`d_user_identities(user_id)`、`d_user_identities(identity_type, identity_no)`、`d_user_roles(user_id, role_code)`。
+0004 后唯一约束：`d_user_identities(identity_type, identity_no)`、`d_user_identities(id, user_id)`、`d_user_roles(user_id, role_code, scope_type, scope_value)`。新增 `scope_type/scope_value`；旧授权保留 GLOBAL/*，不将作用域权限混用。
 
 ### 2.2 教室、座位与统一资源来源
 
@@ -166,7 +168,7 @@ M1、M2、M3 的业务表由模块负责人维护，但字段必须遵守以下�
 
 | 模块表 | 必须字段 | 必须引用 |
 |---|---|---|
-| `m1_reservations` | `id`、`created_at`、`updated_at`、`user_id`、`room_id`、`seat_id`、`start_at`、`end_at`、`status`、`request_key` | `user_id → d_users.id`；`room_id → d_rooms.id`；`seat_id → d_seats.id`；来源写 `M1` |
+| `m1_reservations` | `id`、`created_at`、`updated_at`、`user_id`、`room_id`、`seat_id`、`start_at`、`end_at`、`status`、`create_request_key`、`request_hash`、`identity_id` | `user_id → d_users.id`；`room_id → d_rooms.id`；`seat_id → d_seats.id`；来源写 `M1` |
 | `m2_applications` | `id`、`created_at`、`updated_at`、`applicant_id`、`room_id`、`start_at`、`end_at`、`status`、`request_key` | `applicant_id → d_users.id`；`room_id → d_rooms.id`；批准后来源写 `M2` |
 | `m3_work_orders` | `id`、`created_at`、`updated_at`、`reporter_id`、`room_id`、`status`、`request_key` | `reporter_id → d_users.id`；`room_id → d_rooms.id`；维修中来源写 `M3` |
 
@@ -190,7 +192,7 @@ M1、M2、M3 的业务表由模块负责人维护，但字段必须遵守以下�
 4. 添加迁移回放、外键、事务和接口行为测试；
 5. 在 PR 描述中列出受影响模块，由 D、M1、M2、M3 至少各一名成员评审。
 
-M2 两级流程与必要 D 扩展见 [M2 实现与运行](m2-implementation.md)。公共变更仍需相关负责人评审；M1 业务尚未交付。
+M2 两级流程与必要 D 扩展见 [M2 实现与运行](m2-implementation.md)。公共变更仍需相关负责人评审；M1 基础 API 已整合，后续交付范围见 [整合说明](m1/main-integration.md)。
 
 ## 6. M2 两级流程的公共扩展（本次实现提案）
 

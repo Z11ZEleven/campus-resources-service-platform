@@ -669,3 +669,22 @@ def test_withdraw_waits_for_real_room_lock(factory, m2_data):
             assert entered.wait(5) and not finished.wait(0.25)
         future.result(timeout=5)
     assert finished.is_set()
+
+
+def test_browser_session_can_apply_with_csrf_and_rejects_missing_csrf(client, m2_data):
+    from app.modules.auth.sessions import CSRF_COOKIE
+
+    response = client.post('/api/v1/auth/login', json={
+        'username': 'student', 'password': 'test-only-password-123',
+    })
+    assert response.status_code == 200
+    assert client.get(BASE + '/me').status_code == 200
+    response = client.post(BASE + '/applications', headers={'Idempotency-Key': str(uuid4())},
+                           json=body(m2_data))
+    assert response.status_code == 403
+    assert response.json()['detail']['code'] == 'CSRF_REQUIRED'
+    response = client.post(BASE + '/applications', headers={
+        'Idempotency-Key': str(uuid4()), 'X-CSRF-Token': client.cookies[CSRF_COOKIE],
+    }, json=body(m2_data))
+    assert response.status_code == 201
+    assert response.json()['status'] == 'PENDING_FIRST_APPROVAL'

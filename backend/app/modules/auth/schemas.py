@@ -11,11 +11,6 @@ class Login(Input):
     model_config = {"extra": "forbid", "str_strip_whitespace": False}
 
 
-class Token(Output):
-    access_token: str
-    token_type: str = "bearer"
-
-
 class UserView(Output):
     id: Id
     username: str
@@ -23,3 +18,15 @@ class UserView(Output):
     identity_type: str
     department_code: str
     roles: list[str]
+    identity_id: Id
+    permissions: list[str]
+
+
+class IdentitySelection(Input):
+    identity_id: Id
+
+
+class RoleGrantInput(Input):
+    role_code: str = Field(pattern="^(USER|ROOM_ADMIN|PROPERTY_ADMIN|REPAIRER|SYS_ADMIN)$")
+    scope_type: str = Field(default="ROOM", pattern="^(GLOBAL|ROOM|DEPARTMENT|BUILDING)$")
+    scope_value: str = Field(min_length=1, max_length=64)
