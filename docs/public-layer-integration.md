@@ -1,10 +1,12 @@
 # 公共层 D 接入指南
 
+2026-10-31：M1 T06 新增 D 公共 Outbox、独立 Worker、站内通知接收和按 `USER/SERVICE/SYSTEM` 区分的审计接收，迁移至 0007。此前 T01–T05 扩展了 D 会话、身份/范围授权、主数据维护与开放规则、资源占用明细以及 M1 五张模型表。以下首次迭代说明是历史边界；新增接口与升级兼容以 [M1 基础契约](m1/contracts.md) 为准。M1 预约/签到业务及实际 M2/M3 HTTP 写回仍待后续任务。
+
 ## 1. 已交付边界
 
-第一次迭代实现 MySQL 公共层的 8 张 D 表、版本化迁移、种子、认证和查询 API、资源公开函数、最小操作记录及公共 Vue 示例。随后在 `0003_m3_extensions` 中新增 D 站内通知表/服务/API/前端中心，当前为 9 张 D 表；M3 已实现 3 张业务表、报修闭环、超时任务与评价。公共字段基线见[数据库统一契约](database-contract.md)，M1/M2/M3 私有业务表与状态仍由各模块实现。
+第一次迭代实现 MySQL 公共层的 8 张 D 表、版本化迁移、种子、认证和查询 API、资源公开函数、最小操作记录及公共 Vue 示例。随后在 `0003_m3_extensions` 中新增 D 站内通知表/服务/API/前端中心，T06 在 `0007_outbox_audit` 新增 `d_outbox_events` 并扩展操作记录，当前为 **10 张 D 表**；M3 已实现 3 张业务表、报修闭环、超时任务与评价。公共字段基线见[数据库统一契约](database-contract.md)，M1/M2/M3 私有业务表与状态仍由各模块实现。
 
-新增公共 D 通知为本次用户确认的本地实现提案，影响公共模型注册、迁移、应用启动与前端导航，**待团队评审**，不宣称已形成团队共识或变更共享负责人。规则与验收见 [M3 扩展说明](m3-extensions.md)。
+新增公共 D 通知、Outbox 和审计操作者字段为本次用户确认的本地实现提案，影响公共模型注册、迁移、应用启动与运维方式，**待团队评审**，不宣称已形成团队共识或变更共享负责人。规则与验收见 [M3 扩展说明](m3-extensions.md)与 [M1 基础契约](m1/contracts.md)。
 
 资源服务是唯一资源写入入口。业务单存在性、归属、当前合法状态与人数/负责人等业务规则，必须由各模块先验证。没有向普通用户开放直接创建或释放来源的 HTTP 接口。
 
@@ -130,7 +132,7 @@ def create_reservation(body, session, actor):
 - 验收一个维修单只撤销一个来源；有其他维修/M2 占用时仍不可预约。
 - 所有变更在同一房间行锁下写入，房间锁之前不先锁业务单。
 - 所有来源和启停变更增加 resource_version；汇总是查询缓存，提交不依赖 AVAILABLE。
-- d_user_identities、d_rooms 等字段的直接维护不能绕过公共规则；本轮资源由种子初始化，完整编辑 API 后续实现。
+- d_user_identities、d_rooms 等字段的维护不能绕过公共规则；T04 已增加受控资源编辑 API，冲突变更返回409，免责业务仍待后续实现。
 
 ### D 站内通知公共服务（本地提案，待团队评审）
 
@@ -140,7 +142,15 @@ def create_reservation(body, session, actor):
 
 本人 HTTP 接口：`GET /api/v1/notifications`、`GET /api/v1/notifications/unread-count`、`POST /api/v1/notifications/{id}/read`、`POST /api/v1/notifications/read-all`。全部已读只更新当时可见未读 ID 快照；单条重复操作幂等。参数、输出、当前通知收件人与严格超时边界见 [扩展 API](m3-extensions.md#3-http-接口)。
 
-收件箱事务提交即站内送达；这不是邮件、微信等外部通道，也不是跨进程网络投递或补偿队列。当前 M3 与 D 同库同事务，站内通知失败不能 catch 后继续提交业务成功。
+收件箱事务提交即站内送达；这不是邮件、微信等外部通道，也不是跨模块网络投递。当前 M3 与 D 同库同事务，站内通知失败不能 catch 后继续提交业务成功。
+
+### D 公共 Outbox 与审计适配（本地提案，待团队评审）
+
+业务模块用 `app.modules.outbox.service.register_event` 在自身事务内登记任务，唯一键为 `(source_module, event_key)`；同载荷重试幂等，改载荷/处理器/业务版本返回 409，业务回滚会同时撤销任务。D 的独立 Worker（`python -m app.worker`）用 `FOR UPDATE SKIP LOCKED` 领取到期或租约过期任务，写租约令牌、到期时间、尝试次数和乐观版本。完成/重试/转人工都必须匹配令牌和版本，旧 Worker 不能覆盖新结果；进程崩溃后租约到期可被重新领取。
+
+任务状态为 `PENDING/PROCESSING/SUCCEEDED/MANUAL`。瞬时失败按 5–300 秒指数退避；达到上限或不可重试错误进入 `MANUAL`，保留错误分类和最后错误，可用 `list_failures` 查询后人工处理。通知和审计适配默认最多 6 次；必须无限重试的业务定时/释放任务可显式传 `max_attempts=None`，不与投递策略混用。
+
+`deliver_notification` 写真实 `d_notifications` 站内收件箱，靠收件人+模块事件键去重；重投不会重复通知或重置已读时间。`receive_audit` 扩展 `record_operation`：用户审计为 `USER + actor_id`，服务主体为 `SERVICE + service_principal_id`，Worker/系统动作为 `SYSTEM` 且不伪造用户；`(module, event_key)` 唯一使重投幂等。审计仍有服务层读取函数，未新增公共 HTTP 管理页面。
 
 ## 8. 前端接入
 
@@ -152,9 +162,21 @@ def create_reservation(body, session, actor):
 
 ## 9. 验证与限制
 
-公共层首轮曾使用真实 MySQL 8.0.46 验证；2026-10-21 M3 扩展在本机 MySQL 8.4 专用测试库完整验证 **145 passed**、Ruff 通过。远端 CI 和 PR 检查结果仍以 GitHub 当次实际运行结果为准。
+公共层首轮曾使用真实 MySQL 8.0.46 验证；2026-10-31 在本机 MySQL 8.4 专用测试库完整验证 **216 passed**、Ruff 和 `alembic check` 通过。2026-10-21 M3 扩展记录为 145 passed。远端 CI 和 PR 检查结果仍以 GitHub 当次实际运行结果为准。
 
-已配置的测试覆盖认证、权限、事务回滚、真实房间行锁、并发预约、M2/M3 占用、幂等、来源恢复、汇总重算、MySQL 外键和迁移往返。前端执行 TypeScript 检查与生产构建。
+已配置的测试覆盖认证、权限、事务回滚、真实房间行锁、并发预约、M2/M3 占用、幂等、来源恢复、汇总重算、MySQL 外键、迁移往返、Outbox 租约恢复/并发领取/重试以及通知和审计重投幂等。前端执行 TypeScript 检查与生产构建。
+
+M3 已在公共层之上实现工单/评价/升级表、十个 M3 API、真实前端、维修来源联动，以及自动超时任务与站内通知，见 [M3 后端](m3-backend.md)、[前端](m3-frontend.md)与 [扩展说明](m3-extensions.md)。T06 已补公共 Outbox、独立 Worker、站内通知和审计适配。仍待完成：M1 业务 API 与预约通知触发点、M2 业务主表与 API、附件、细粒度范围、撤销/转派/重开、外部通知、Outbox 故障管理 HTTP/指标、真实模块间网络集成、自动部署及生产发布。现有同进程资源函数、数据库 Outbox 及同库站内通知不等于完成课程要求的跨模块网络链路。
+
+## 10. T01–T06 会话、授权与任务升级
+
+Cookie 登录返回 authenticated，不返回原 access_token；前端从统一会话恢复当前用户，修改请求附会话绑定 CSRF。旧 JWT HTTP 凭据升级后失效，所有调用方重新登录。测试用的 token_headers 创建真实数据库会话，不再签发虚构有效 JWT。
+
+Principal.require/has 仅对全局授权成立；房间范围使用 require_for_room/can_for_room；SQL 用 room_scope_predicate，不能把独立角色的动作和范围拼接。旧 M3 只支持原全局业务角色；新局部授权保守拒绝，完整适配单列后续任务。服务主体与用户会话分离，使用 require_service(module) 或 authenticate_service 验证模块与房间。
+
+0006 来源写入生成占用明细并精确释放；历史逻辑 M1 来源允许空 typed 业务关联，不创造预约事实。现有 D 单服务事务不等于真实跨模块网络验收。
+
+## 资源来源版本扩展（T07，待团队评审）
 
 M3 已在公共层之上实现工单/评价/升级表、十个 M3 API、真实前端、维修来源联动，以及自动超时任务与站内通知，见 [M3 后端](m3-backend.md)、[前端](m3-frontend.md)与 [扩展说明](m3-extensions.md)。M2 已按完整文档接入，见第10节。仍待完成：M1 业务主表与 API、附件、细粒度范围、撤销/转派/重开、完整独立业务事件流、外部通知、真实模块间网络集成与跨进程可靠补偿、自动部署及生产发布。原有同进程资源函数及同库站内通知不等于跨模块网络链路；本次 M2 使用独立 D 网络应用，见第10节。
 

@@ -9,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import AwareDatetime, Field
 from sqlalchemy import select
 
+from app import models  # noqa: F401 - register FK metadata; no private business-table access
 from app.core.config import get_settings
 from app.core.errors import DomainError
 from app.core.schema import DecimalId, Input
