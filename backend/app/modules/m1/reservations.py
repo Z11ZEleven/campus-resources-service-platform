@@ -110,7 +110,12 @@ def create(
     if existing:
         return view(existing, original=True)
     require_student_for_room(actor, room)
-    start, end = validate_booking_period(start_at, end_at, now=precise_utcnow())
+    from app.modules.settings.service import read_int
+
+    max_hours, settings_version = read_int(session, "m1.max_hours", 4, lock=True)
+    start, end = validate_booking_period(
+        start_at, end_at, now=precise_utcnow(), max_hours=max_hours
+    )
     seat = session.get(Seat, seat_id, populate_existing=True)
     snapshot = {
         "seat_no": seat.seat_no,
@@ -119,7 +124,13 @@ def create(
         "has_fixed_socket": bool(seat.has_fixed_socket),
         "has_mobile_socket": bool(seat.has_mobile_socket),
     }
-    settings = {"window_start": "08:00", "window_end": "22:00", "min_hours": 1, "max_hours": 4}
+    settings = {
+        "window_start": "08:00",
+        "window_end": "22:00",
+        "min_hours": 1,
+        "max_hours": max_hours,
+        "version": str(settings_version),
+    }
     floor = session.scalar(select(func.max(Reservation.id))) or 0
     reservation_id = allocate_m1_source_id(session, reservation_floor=floor)
     row = Reservation(

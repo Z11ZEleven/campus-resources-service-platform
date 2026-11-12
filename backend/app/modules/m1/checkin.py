@@ -101,8 +101,6 @@ def check_in(session, actor, auth_id, reservation_id, submitted, correlation_id)
     if actor.identity_type != "STUDENT" or actor.identity_id != row.identity_id:
         raise forbidden()
     actor.require_for_room("m1:reservation:checkin", room)
-    if room.department_code is not None and room.department_code != actor.department_code:
-        raise forbidden()
     if row.status == "CHECKED_IN":
         return view(row), None
     now = as_utc(precise_utcnow()).replace(tzinfo=None)

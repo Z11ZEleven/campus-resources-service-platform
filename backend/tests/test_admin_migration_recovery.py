@@ -39,7 +39,7 @@ def test_interrupted_admin_migration_recovers_without_losing_data(
             )
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0011_admin_restrictions"
+                == "0014_service_operation_scope"
             )
         assert "d_admin_restriction_requests" in inspect(mysql_engine).get_table_names()
     finally:
@@ -57,5 +57,5 @@ def test_interrupted_admin_migration_recovers_without_losing_data(
                 )
             )
             connection.execute(
-                text("UPDATE alembic_version SET version_num='0011_admin_restrictions'")
+                text("UPDATE alembic_version SET version_num='0014_service_operation_scope'")
             )

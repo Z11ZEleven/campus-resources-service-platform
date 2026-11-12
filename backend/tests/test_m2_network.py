@@ -263,6 +263,11 @@ def test_expiry_after_unknown_success_releases_only_own_hold(
                 )
             ).all()
             assert rows == [("M2", "RELEASED"), ("M3", "ACTIVE")]
+            from app.modules.resources.allocation_models import SeatAllocation
+
+            allocations = list(session.scalars(select(SeatAllocation)))
+            assert allocations
+            assert all(row.status == "RELEASED" and row.released_at for row in allocations)
             assert session.get(Application, app_id).status == "AUTO_CANCELLED"
             assert session.get(Application, app_id).resource_sync_status == "CANCELLED"
     finally:

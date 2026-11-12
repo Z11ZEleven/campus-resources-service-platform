@@ -287,7 +287,13 @@ def start_work_order(session: Session, *, order_id: int, actor: Principal) -> Wo
         raise forbidden()
     if order.status == "REPAIRING":
         return order
-    start_maintenance(session, room_id=order.room_id, work_order_id=order.id, actor=actor)
+    source = start_maintenance(session, room_id=order.room_id, work_order_id=order.id, actor=actor)
+    from app.modules.m1.resource_impact import apply_maintenance
+
+    apply_maintenance(
+        session, room=lock_room(session, order.room_id),
+        effective_at=source.start_at, source_id=order.id,
+    )
     order.started_at = utcnow()
     return _transition(session, order, actor, "START_REPAIR", "REPAIRING")
 

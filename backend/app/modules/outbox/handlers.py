@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
 from app.modules.audit.service import record_operation
+from app.modules.m1.timers import handle_timer
 from app.modules.notifications.service import publish_notifications
 
 
@@ -50,6 +51,7 @@ def receive_audit(session: Session, payload: dict[str, Any]) -> Any:
 HANDLERS: Mapping[str, Handler] = {
     "notification": deliver_notification,
     "audit": receive_audit,
+    "m1_timer": handle_timer,
 }
 
 

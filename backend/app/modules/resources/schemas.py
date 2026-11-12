@@ -30,6 +30,8 @@ class SeatView(Output):
     has_fixed_socket: bool
     has_mobile_socket: bool
     is_active: bool
+    affected_reservation_count: int = 0
+    affected_reservation_ids: list[Id] = []
 
 
 class SlotView(Output):

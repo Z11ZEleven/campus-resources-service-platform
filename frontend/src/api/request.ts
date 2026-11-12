@@ -17,6 +17,8 @@ request.interceptors.response.use(response => response, error => {
 
 export function errorMessage(error: unknown): string {
   if (!axios.isAxiosError(error)) return '操作失败，请重试'
+  const apiError = error.response?.data?.error
+  if (typeof apiError?.message === "string") return apiError.message
   const detail = error.response?.data?.detail
   if (typeof detail?.message === 'string') return detail.message
   if (Array.isArray(detail)) return detail.map(item => item.msg).join('；')

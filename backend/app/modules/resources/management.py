@@ -71,9 +71,7 @@ def save_building(session, actor, payload, building_id=None):
         session.add(row)
         persist(session)
     else:
-        row = session.scalar(select(Building).where(Building.id == building_id).with_for_update())
-        if row is None:
-            raise not_found()
+        # Room locks precede the building lock, matching save_room.
         rooms = list(
             session.scalars(
                 select(Room)
@@ -82,6 +80,19 @@ def save_building(session, actor, payload, building_id=None):
                 .with_for_update()
             )
         )
+        row = session.scalar(
+            select(Building)
+            .where(Building.id == building_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if row is None:
+            raise not_found()
+        current_ids = set(session.scalars(select(Room.id).where(Room.building_id == building_id)))
+        if current_ids != {room.id for room in rooms}:
+            # A room was created/moved while acquiring locks. Never acquire
+            # additional room locks while holding the building lock.
+            raise conflict("建筑内教室已变化，请刷新后重试")
         if not payload.is_active:
             for room in rooms:
                 reject_sources(session, room.id)
@@ -103,6 +114,10 @@ def save_room(session, actor, payload, room_id=None):
     from app.modules.resources.service import lock_room
 
     values = payload.model_dump()
+    room = None
+    if room_id is not None:
+        room = lock_room(session, room_id)
+        actor.require_for_room("resources:manage", room)
     building = session.scalar(
         select(Building).where(Building.id == payload.building_id).with_for_update()
     )
@@ -117,21 +132,35 @@ def save_room(session, actor, payload, room_id=None):
         session.add(room)
         persist(session)
     else:
-        room = lock_room(session, room_id)
-        actor.require_for_room("resources:manage", room)
         candidate = SimpleNamespace(
             id=room.id, building_id=building.id, department_code=payload.department_code
         )
         actor.require_for_room("resources:manage", candidate)
         if (
             not payload.is_active
-            or payload.department_code != room.department_code
             or payload.building_id != room.building_id
             or payload.capacity < room.capacity
-            or payload.open_time > room.open_time
-            or payload.close_time < room.close_time
         ):
             reject_sources(session, room.id)
+        if not room.opening_rules_enabled and (
+            payload.open_time > room.open_time or payload.close_time < room.close_time
+        ):
+            candidate_hours = SimpleNamespace(
+                opening_rules_enabled=False,
+                open_time=payload.open_time,
+                close_time=payload.close_time,
+            )
+            instant = utcnow()
+            for source in active_sources(session, room.id):
+                if source.end_at is None:
+                    raise conflict("开放规则变更与有效维修来源冲突")
+                start = max(source.start_at, instant)
+                if not covers(
+                    calculate(candidate_hours, [], [], start, source.end_at),
+                    start,
+                    source.end_at,
+                ):
+                    raise conflict("开放规则缩短与有效资源来源冲突")
         for key, value in values.items():
             setattr(room, key, value)
         room.building_name = building.name
