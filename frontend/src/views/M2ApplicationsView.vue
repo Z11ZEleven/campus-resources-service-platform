@@ -46,7 +46,15 @@ function schoolDate() {
   return `${p('year')}-${p('month')}-${p('day')}`
 }
 function earliestDate() { return new Date(Date.parse(`${schoolDate()}T00:00:00Z`)+2*86400000).toISOString().slice(0,10) }
+function disableEarlyDate(date: Date) { return date.getTime() < new Date(`${earliestDate()}T00:00:00`).getTime() }
 function stateLabel(app: api.Application) { return app.status==='APPROVED' && Date.parse(app.end_at)<=now.value ? '已结束' : labels[app.status] }
+function stateTagType(value: string): 'success' | 'warning' | 'info' | 'danger' | 'primary' {
+  if (value === 'APPROVED') return 'success'
+  if (value === 'REJECTED' || value === 'AUTO_CANCELLED') return 'danger'
+  if (value === 'WITHDRAWN' || value === 'CANCELLED' || value === 'EXPIRED' || value === 'ENDED') return 'info'
+  if (value === 'PENDING_FIRST_APPROVAL' || value === 'PENDING_ROOM_APPROVAL' || value === 'RESOURCE_CONFIRMING' || value === 'PENDING' || value === 'CONFIRMING') return 'warning'
+  return 'primary'
+}
 function isExpired(app: api.Application) { return Date.parse(app.start_at)<=now.value || (!!app.step_deadline_at && Date.parse(app.step_deadline_at)<=now.value) }
 const currentStep = computed(()=>current.value?.steps.find(step=>step.level===current.value?.current_level))
 const canReview = computed(()=>!!current.value && current.value.applicant_id!==auth.user?.id && waiting.includes(current.value.status)
@@ -175,46 +183,44 @@ onBeforeUnmount(()=>{alive=false;++sequence;++detailSequence;controller.abort();
 
 <template>
   <section class="m2-page">
-    <div class="eyebrow">ROOM APPLICATIONS · M2</div>
-    <div class="heading-row"><h1>{{ reviewingList?'整室申请审批待办':'整教室预约申请' }}</h1><el-button type="primary" @click="openCreate">提交申请</el-button></div>
-    <p class="muted">有效的学生、教师和工作人员均可申请。先由院系或校级管理员审批，再由对应教室管理员审批。</p>
-    <el-alert title="只可申请整室类型教室；至少提前两个自然日，整点、同日1至4小时，须在08:00–22:00及实际开放时段内。" type="info" :closable="false" />
-    <div class="filters">
-      <label v-if="!reviewingList">申请状态<select v-model="status" @change="filterChanged"><option value="">全部状态</option><option v-for="key in ['PENDING_FIRST_APPROVAL','PENDING_ROOM_APPROVAL','RESOURCE_CONFIRMING','APPROVED','REJECTED','WITHDRAWN','AUTO_CANCELLED']" :key="key" :value="key">{{ labels[key] }}</option></select></label>
-      <label v-if="scopes.length && !reviewingList">查看范围<select v-model="mine" @change="filterChanged"><option :value="true">本人申请</option><option :value="false">本人及授权范围内申请</option></select></label>
-      <el-button :loading="loading" :disabled="busy" @click="load()">刷新列表</el-button>
-      <router-link v-if="scopes.length" :to="reviewingList?'/m2/applications':'/m2/approval-tasks'">{{ reviewingList?'查看申请列表':'进入审批待办' }}</router-link>
+    <header class="page-heading"><div><p class="section-kicker">校园空间 / 整室预约</p><h1>{{ reviewingList?'整室申请审批待办':'整教室预约申请' }}</h1><p class="page-description">{{ reviewingList?'集中处理当前账号授权范围内的审批任务。':'提交整室使用申请，并跟踪每一级审批与资源确认。' }}</p></div><el-button type="primary" size="large" @click="openCreate"><span aria-hidden="true">＋</span> 提交申请</el-button></header>
+    <el-alert title="只可申请整室类型教室；至少提前两个自然日，整点、同日 1 至 4 小时，须在 08:00–22:00 及实际开放时段内。" type="info" show-icon :closable="false" />
+    <section class="applications-panel" aria-label="整室申请列表">
+    <div class="list-toolbar">
+      <div class="query-controls">
+        <el-select v-if="!reviewingList" v-model="status" clearable placeholder="全部申请状态" aria-label="申请状态" @change="filterChanged"><el-option v-for="key in ['PENDING_FIRST_APPROVAL','PENDING_ROOM_APPROVAL','RESOURCE_CONFIRMING','APPROVED','REJECTED','WITHDRAWN','AUTO_CANCELLED']" :key="key" :label="labels[key]" :value="key" /></el-select>
+        <el-select v-if="scopes.length && !reviewingList" v-model="mine" placeholder="查看范围" aria-label="查看范围" @change="filterChanged"><el-option label="本人申请" :value="true" /><el-option label="本人及授权范围内申请" :value="false" /></el-select>
+      </div>
+      <div class="toolbar-actions"><el-button v-if="scopes.length" @click="router.push(reviewingList?'/m2/applications':'/m2/approval-tasks')">{{ reviewingList?'查看申请列表':'进入审批待办' }}</el-button><el-button :loading="loading" :disabled="busy" @click="load()">刷新列表</el-button></div>
     </div>
+    <div class="result-caption"><span>{{ loading?'正在读取申请…':`共 ${total} 条记录` }}</span><span>时间按北京时间显示</span></div>
     <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
-    <div v-loading="loading" class="table-wrap">
-      <table v-if="reviewingList && tasks.length"><thead><tr><th>待办 / 申请</th><th>用途与时段（北京时间）</th><th>当前步骤截止</th><th>操作</th></tr></thead><tbody>
-        <tr v-for="task in tasks" :key="task.id"><td>第 {{ task.level }} 级审批 · #{{ task.application_id }}<div class="muted">{{ roleLabels[task.required_role] }}</div></td><td class="purpose-cell">{{ task.application.purpose }}<div class="muted">{{ formatTime(task.application.start_at) }} 至 {{ formatTime(task.application.end_at) }}</div></td><td>{{ formatTime(task.deadline_at) }}</td><td><el-button size="small" :disabled="busy" @click="openReview(task.application_id)">查看并审批</el-button></td></tr>
-      </tbody></table>
-      <table v-else-if="!reviewingList && items.length"><thead><tr><th>申请</th><th>使用时段（北京时间）</th><th>状态 / 截止时间</th><th>操作</th></tr></thead><tbody>
-        <tr v-for="app in items" :key="app.id"><td class="purpose-cell"><strong>#{{ app.id }} · {{ app.purpose }}</strong><div class="muted">教室 #{{ app.room_id }} · 申请人 #{{ app.applicant_id }}</div></td><td>{{ formatTime(app.start_at) }}<br />至 {{ formatTime(app.end_at) }}</td><td><span :class="['state',app.status]">{{ stateLabel(app) }}</span><div class="muted">{{ formatTime(app.step_deadline_at) }}</div><div v-if="app.resource_sync_status==='CANCEL_PENDING'" class="warning">已自动撤销，资源清理待确认</div></td><td><el-button size="small" @click="showDetail(app.id)">详情</el-button><el-button v-if="app.applicant_id===auth.user?.id && waiting.includes(app.status)" size="small" :disabled="busy || isExpired(app)" @click="withdraw(app)">撤回</el-button></td></tr>
-      </tbody></table>
+    <div v-loading="loading" class="results-area">
+      <el-table v-if="reviewingList && tasks.length" :data="tasks" row-key="id"><el-table-column label="待办 / 申请" min-width="180"><template #default="{ row }"><strong>第 {{ row.level }} 级审批 · #{{ row.application_id }}</strong><div class="secondary">{{ roleLabels[row.required_role] }}</div></template></el-table-column><el-table-column label="用途与时段" min-width="280"><template #default="{ row }"><div class="purpose-cell">{{ row.application.purpose }}</div><div class="secondary">{{ formatTime(row.application.start_at) }} 至 {{ formatTime(row.application.end_at) }}</div></template></el-table-column><el-table-column label="当前步骤截止" min-width="180"><template #default="{ row }">{{ formatTime(row.deadline_at) }}</template></el-table-column><el-table-column label="操作" width="120" align="right"><template #default="{ row }"><el-button link type="primary" :disabled="busy" @click="openReview(row.application_id)">查看并审批</el-button></template></el-table-column></el-table>
+      <el-table v-else-if="!reviewingList && items.length" :data="items" row-key="id"><el-table-column label="申请" min-width="280"><template #default="{ row }"><button class="application-title" type="button" @click="showDetail(row.id)">#{{ row.id }} · {{ row.purpose }}</button><div class="secondary">教室 #{{ row.room_id }} · 申请人 #{{ row.applicant_id }}</div></template></el-table-column><el-table-column label="使用时段" min-width="220"><template #default="{ row }">{{ formatTime(row.start_at) }}<div class="secondary">至 {{ formatTime(row.end_at) }}</div></template></el-table-column><el-table-column label="状态 / 截止时间" min-width="190"><template #default="{ row }"><el-tag :type="stateTagType(row.status)" round>{{ stateLabel(row) }}</el-tag><div class="secondary">{{ formatTime(row.step_deadline_at) }}</div><div v-if="row.resource_sync_status==='CANCEL_PENDING'" class="warning">资源清理待确认</div></template></el-table-column><el-table-column label="操作" width="140" align="right"><template #default="{ row }"><el-button link type="primary" @click="showDetail(row.id)">详情</el-button><el-button v-if="row.applicant_id===auth.user?.id && waiting.includes(row.status)" link type="danger" :disabled="busy || isExpired(row)" @click="withdraw(row)">撤回</el-button></template></el-table-column></el-table>
       <el-empty v-else-if="!loading && !loadError" :description="reviewingList?'当前没有本人可审批的待办':'暂无符合条件的申请'" />
     </div>
     <el-pagination v-model:current-page="page" :page-size="10" :total="total" layout="total,prev,pager,next" class="pagination" @current-change="load()" />
+    </section>
 
     <el-dialog v-model="createOpen" title="提交整教室申请" width="min(640px,94vw)" :close-on-click-modal="!busy" :close-on-press-escape="!busy" :show-close="!busy">
-      <form @submit.prevent="submitCreate"><label>整室教室<select v-model="form.room_id" required><option value="" disabled>请选择教室</option><option v-for="room in rooms" :key="room.id" :value="room.id">{{ room.name }} · {{ room.code }}（{{ room.department_code || '校级' }}，{{ room.open_time.slice(0,5) }}–{{ room.close_time.slice(0,5) }}）</option></select></label><el-button v-if="rooms.length<roomsTotal" @click="moreRooms()">加载更多教室</el-button>
-        <label>申请理由<textarea v-model="form.purpose" rows="4" required maxlength="2000" /></label>
-        <label>使用日期（北京时间）<input v-model="form.date" type="date" :min="earliestDate()" required /></label>
-        <div class="form-grid"><label>开始时间<select v-model="form.start"><option v-for="hour in hours.slice(0,-1)" :key="hour" :value="hour">{{ hour }}:00</option></select></label><label>结束时间<select v-model="form.end"><option v-for="hour in hours.slice(1)" :key="hour" :value="hour">{{ hour }}:00</option></select></label></div>
-        <p class="muted">待审批不占用教室；每一级在步骤创建后的下一自然日23:59:59截止，使用开始更早时以开始时间为界。</p><el-button type="primary" native-type="submit" :loading="busy">提交并进入一级审批</el-button>
-      </form>
+      <el-form label-position="top" @submit.prevent="submitCreate"><el-form-item label="整室教室" required><el-select v-model="form.room_id" filterable placeholder="请选择教室"><el-option v-for="room in rooms" :key="room.id" :label="`${room.name} · ${room.code}（${room.department_code || '校级'}，${room.open_time.slice(0,5)}–${room.close_time.slice(0,5)}）`" :value="room.id" /></el-select><el-button v-if="rooms.length<roomsTotal" class="more-rooms" text type="primary" @click="moreRooms()">加载更多教室</el-button></el-form-item>
+        <el-form-item label="申请理由" required><el-input v-model="form.purpose" type="textarea" :rows="4" maxlength="2000" show-word-limit placeholder="请说明课程、活动或会议用途" /></el-form-item>
+        <el-form-item label="使用日期（北京时间）" required><el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" :disabled-date="disableEarlyDate" placeholder="选择日期" /></el-form-item>
+        <div class="form-grid"><el-form-item label="开始时间" required><el-select v-model="form.start"><el-option v-for="hour in hours.slice(0,-1)" :key="hour" :label="`${hour}:00`" :value="hour" /></el-select></el-form-item><el-form-item label="结束时间" required><el-select v-model="form.end"><el-option v-for="hour in hours.slice(1)" :key="hour" :label="`${hour}:00`" :value="hour" /></el-select></el-form-item></div>
+        <p class="muted">待审批不占用教室；每一级在步骤创建后的下一自然日 23:59:59 截止，使用开始更早时以开始时间为界。</p><el-button type="primary" native-type="submit" :loading="busy">提交并进入一级审批</el-button>
+      </el-form>
     </el-dialog>
 
     <el-dialog v-model="reviewOpen" title="处理当前审批步骤" width="min(620px,94vw)" :close-on-click-modal="!busy" :close-on-press-escape="!busy" :show-close="!busy">
       <template v-if="current"><h2>申请 #{{ current.id }} · {{ current.room.name }}</h2><p class="purpose">{{ current.purpose }}</p><p>{{ formatTime(current.start_at) }} 至 {{ formatTime(current.end_at) }}（北京时间）</p><p>当前第 {{ current.current_level }} 级 · 截止 {{ formatTime(current.step_deadline_at) }}</p>
         <el-alert v-if="!canReview" title="申请已变化、到期或当前账号无权处理，请刷新列表查看。" type="warning" :closable="false" />
-        <form v-else @submit.prevent="submitReview"><label>处理决定<select v-model="decision.passed"><option :value="true">通过本级审批</option><option :value="false">驳回申请</option></select></label><label>审批意见{{ decision.passed?'（选填）':'（必填）' }}<textarea v-model="decision.comment" :required="!decision.passed" rows="3" maxlength="500" /></label><p class="muted">一级通过只进入二级。二级同意后须通过网络取得资源确认；技术失败会继续确认，资源冲突会自动驳回。</p><el-button type="primary" native-type="submit" :loading="busy">确认处理</el-button></form>
+        <el-form v-else label-position="top" @submit.prevent="submitReview"><el-form-item label="处理决定"><el-select v-model="decision.passed"><el-option label="通过本级审批" :value="true" /><el-option label="驳回申请" :value="false" /></el-select></el-form-item><el-form-item :label="`审批意见${decision.passed?'（选填）':'（必填）'}`" :required="!decision.passed"><el-input v-model="decision.comment" type="textarea" :rows="3" maxlength="500" show-word-limit /></el-form-item><p class="muted">一级通过只进入二级。二级同意后须通过网络取得资源确认；技术失败会继续确认，资源冲突会自动驳回。</p><el-button type="primary" native-type="submit" :loading="busy">确认处理</el-button></el-form>
       </template>
     </el-dialog>
 
     <el-dialog v-model="detailOpen" title="申请详情与审批进度" width="min(760px,94vw)">
-      <template v-if="current"><h2>申请 #{{ current.id }} · {{ current.room.name }}</h2><span :class="['state',current.status]">{{ stateLabel(current) }}</span><p>{{ formatTime(current.start_at) }} 至 {{ formatTime(current.end_at) }}（北京时间）</p><p class="purpose">{{ current.purpose }}</p>
+      <template v-if="current"><div class="detail-heading"><h2>申请 #{{ current.id }} · {{ current.room.name }}</h2><el-tag :type="stateTagType(current.status)" round>{{ stateLabel(current) }}</el-tag></div><p>{{ formatTime(current.start_at) }} 至 {{ formatTime(current.end_at) }}（北京时间）</p><p class="purpose">{{ current.purpose }}</p>
         <p>申请身份：{{ identityLabels[current.identity_type] || current.identity_type }} · {{ current.department_code }}</p><p v-if="current.final_reason" class="purpose">处理原因：{{ current.final_reason }}</p><el-alert v-if="current.resource_message || current.resource_sync_status==='CANCEL_PENDING'" :title="current.resource_sync_status==='CANCEL_PENDING'?'申请已自动撤销，资源清理仍待确认，后台会继续处理。':current.resource_message || ''" type="warning" :closable="false" />
         <h3>审批步骤</h3><ol class="events"><li v-for="step in current.steps" :key="step.id">第 {{ step.level }} 级 · {{ roleLabels[step.required_role] }} · {{ step.status === 'APPROVED' ? '本级通过' : labels[step.status] }}<div class="muted">截止 {{ formatTime(step.deadline_at) }}<template v-if="step.decided_at"> · 处理于 {{ formatTime(step.decided_at) }}</template></div><p v-if="step.decision_reason" class="purpose">{{ step.decision_reason }}</p></li></ol>
         <el-button v-if="canReview" type="primary" :disabled="busy" @click="openReview(current.id)">处理当前审批</el-button><el-button v-if="current.applicant_id===auth.user?.id && waiting.includes(current.status)" :disabled="busy || isExpired(current)" @click="withdraw(current)">撤回申请</el-button>
@@ -225,20 +231,12 @@ onBeforeUnmount(()=>{alive=false;++sequence;++detailSequence;controller.abort();
 </template>
 
 <style scoped>
-.heading-row { display:flex;justify-content:space-between;align-items:center;gap:16px; }
-form { display:grid;gap:18px;margin:24px 0; }
-label { display:flex;flex-direction:column;gap:8px;font-size:13px; }
-input,select,textarea { font:inherit;color:inherit;padding:10px;min-height:36px;border:1px solid #cbd5e1;border-radius:5px;background:white;max-width:100%; }
-input:focus,select:focus,textarea:focus { outline:2px solid #93c5fd; }
-.form-grid {display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.m2-page{display:grid;gap:22px}.page-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:20px}.section-kicker{margin:0 0 7px;color:#2563eb;font-size:12px;font-weight:700;letter-spacing:.12em}.page-heading h1{margin:0;font-size:30px}.page-description{margin:9px 0 0;color:#64748b}.applications-panel{padding:22px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.04)}.list-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px}.query-controls,.toolbar-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.query-controls :deep(.el-select){width:230px}.result-caption{display:flex;justify-content:space-between;margin-bottom:10px;color:#64748b;font-size:13px}.secondary{margin-top:5px;color:#64748b;font-size:12px}.application-title{display:block;max-width:100%;padding:0;border:0;background:none;color:#0f172a;font:inherit;font-weight:650;text-align:left;cursor:pointer}.application-title:hover{color:#2563eb}.results-area{min-height:120px}.el-form{display:grid;margin-top:20px}.el-form :deep(.el-select),.el-form :deep(.el-date-editor){width:100%}.more-rooms{margin-left:8px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.detail-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.detail-heading h2{margin:0}
 .purpose-cell {white-space:normal;min-width:200px;max-width:400px;overflow-wrap:anywhere;}
 .purpose {white-space:pre-wrap;overflow-wrap:anywhere;}
 .events {padding-left:22px;}
 .events li {margin:18px 0;line-height:1.7;}
-.pagination {margin-top:20px;}
+.pagination {justify-content:flex-end;margin-top:20px;}
 .warning {color:#92400e;font-size:12px;}
-.PENDING_FIRST_APPROVAL,.PENDING_ROOM_APPROVAL,.RESOURCE_CONFIRMING {background:#fef3c7;color:#92400e;}
-.APPROVED {background:#dcfce7;color:#166534;}
-.REJECTED {background:#fee2e2;color:#991b1b;}
-@media(max-width:600px) {.form-grid{grid-template-columns:1fr}.heading-row h1{font-size:23px}.heading-row{align-items:flex-start}.filters{gap:12px}}
+@media(max-width:700px){.page-heading{align-items:flex-start}.page-heading h1{font-size:25px}.applications-panel{padding:16px}.list-toolbar{align-items:stretch;flex-direction:column}.query-controls,.toolbar-actions{width:100%}.query-controls :deep(.el-select){width:100%}.toolbar-actions .el-button{flex:1}.form-grid{grid-template-columns:1fr}.result-caption{gap:12px}.detail-heading{align-items:flex-start;flex-direction:column}}
 </style>
