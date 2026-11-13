@@ -146,7 +146,7 @@ onMounted(async () => {
         <template v-if="selected">
           <div class="detail-title"><div><span class="secondary">预约 #{{ selected.id }}</span><h2>{{ selected.resource_snapshot.room_name }} · {{ selected.resource_snapshot.seat_no }}</h2></div><el-tag :type="statusTagType(selected.status)" round>{{ statusLabels[selected.status] || selected.status }}</el-tag></div>
           <el-descriptions :column="1" border><el-descriptions-item label="地点">{{ selected.resource_snapshot.building_name }} · {{ selected.resource_snapshot.room_name }}</el-descriptions-item><el-descriptions-item label="座位">{{ selected.resource_snapshot.seat_no }}</el-descriptions-item><el-descriptions-item label="使用时段">{{ showTime(selected.start_at) }} 至 {{ showTime(selected.end_at) }}</el-descriptions-item></el-descriptions>
-          <div v-if="selected.status === 'RESERVED'" class="check-in"><el-input v-model="code" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="请输入八位签到码" /><el-button type="primary" :loading="busy" @click="checkIn(selected)">签到</el-button></div>
+          <div v-if="selected.status === 'RESERVED'" class="check-in"><el-input v-model="code" aria-label="签到码" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="请输入八位签到码" /><el-button type="primary" :loading="busy" @click="checkIn(selected)">签到</el-button></div>
         </template>
       </div>
       <template v-if="selected" #footer><el-button @click="reuse(selected); detailOpen = false">复用座位</el-button><el-button v-if="selected.status === 'RESERVED'" type="danger" plain :loading="busy" @click="cancel(selected)">取消预约</el-button></template>
