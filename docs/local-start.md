@@ -1,6 +1,6 @@
 # Windows 新设备启动
 
-此脚本用于本机开发和课程演示，统一启动 FastAPI 主应用、独立 D 资源服务和 Vue；默认主后端 `8001`、D 资源服务 `8002`、前端 `5173`。需要已安装 Git、原生 Windows Python **3.12**、Node.js **22.12+**、MySQL **8.4**，并启动 MySQL 服务。无需 Docker。
+此脚本用于本机开发和课程演示，统一启动 FastAPI 主应用、独立 D 资源服务和 Vue；默认主后端 `8001`、D 资源服务 `8002`、前端 `5173`。需要已安装 Git、原生 Windows Python **3.12（推荐）或 3.11**、Node.js **22.12+**、MySQL **8.4**，并启动 MySQL 服务。无需 Docker。CI 与容器镜像仍统一使用 Python 3.12。
 
 ## 1. 下载代码
 
@@ -101,7 +101,7 @@ M2 另包含 `staff`、`dept_admin_cs`、`dept_admin_ee`、`campus_admin`、`m2_
 .\start.cmd --help
 ```
 
-- 缺少 Python 3.12 / Node.js：安装后重新打开终端。PowerShell 入口使用 `py -3.12`，其次查找 `python` / `python3.12`，并校验实际版本和原生 Windows 平台；暂不支持 MSYS2 Python。
+- 缺少 Python 3.11 / 3.12 / Node.js：安装后重新打开终端。PowerShell 入口依次尝试 `py -3.12`、`py -3.11`、`python`、`python3.12`、`python3.11`，并校验实际版本和原生 Windows 平台；暂不支持 MSYS2 Python。
 - `.venv` 来自另一台机器或 Python 版本不符：停止服务，将其移走后运行 `--setup` 重建，不复制原机器的虚拟环境或 `node_modules`。
 - MySQL 认证失败/库不存在：检查 `.env`、本机 MySQL 服务、数据库名、账号和授权。
 - 服务密钥缺失或占位：运行 `--setup` 补齐；非占位的短值、环境变量中的无效值、与 JWT 相同的值会被拒绝，须自行修正，不会回显秘密。
@@ -117,4 +117,4 @@ M2 另包含 `staff`、`dept_admin_cs`、`dept_admin_ee`、`campus_admin`、`m2_
 python -m unittest discover -s scripts/tests -v
 ```
 
-Linux/macOS 可使用 Python 3.12 执行 `python3.12 scripts/dev.py --setup` 或 `python3.12 scripts/dev.py`；Windows 是本脚本的主要验证环境。
+Linux/macOS 可使用 Python 3.12 或 3.11 执行 `python3.12 scripts/dev.py --setup` 或 `python3.12 scripts/dev.py`；Windows 是本脚本的主要验证环境。

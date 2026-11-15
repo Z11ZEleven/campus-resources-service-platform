@@ -1,4 +1,4 @@
-"""本地开发启动器；父进程仅使用 Python 3.12 标准库。"""
+"""本地开发启动器；父进程仅使用 Python 3.11 / 3.12 标准库。"""
 
 from __future__ import annotations
 
@@ -98,9 +98,13 @@ def check_venv(python):
     if not python.is_file():
         raise LaunchError("尚未安装后端环境，请先运行 start.cmd --setup。")
     run_step(
-        [python, "-c", "import sys; sys.exit(sys.version_info[:2] != (3, 12))"],
+        [
+            python,
+            "-c",
+            "import sys; sys.exit(sys.version_info[:2] not in {(3, 11), (3, 12)})",
+        ],
         python.parent,
-        "检查虚拟环境 Python 3.12",
+        "检查虚拟环境 Python 3.11/3.12",
         quiet=True,
     )
 
@@ -454,11 +458,11 @@ def main(argv=None):
         help="D 资源服务端口，自动同步 M2 调用地址",
     )
     args = parser.parse_args(argv)
-    if sys.version_info[:2] != (3, 12):
-        raise LaunchError("请使用 Python 3.12 运行启动器。")
+    if sys.version_info[:2] not in {(3, 11), (3, 12)}:
+        raise LaunchError("请使用 Python 3.11 或 3.12 运行启动器。")
     if os.name == "nt" and not sysconfig.get_platform().startswith("win"):
         raise LaunchError(
-            "Windows 请使用原生 Windows Python 3.12，暂不支持 MSYS2 Python。"
+            "Windows 请使用原生 Windows Python 3.11 或 3.12，暂不支持 MSYS2 Python。"
         )
     npm = node_tools()
     if args.setup:
