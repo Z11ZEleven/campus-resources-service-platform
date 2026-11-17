@@ -8,6 +8,7 @@ const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const notifications = useNotificationsStore()
+const isScreen = computed(() => route.path.startsWith('/screen/'))
 const notificationLabel = computed(() => notifications.countError
   ? '通知中心，未读数量暂时无法更新'
   : notifications.countLoaded ? `通知中心，${notifications.unreadCount} 条未读` : '通知中心')
@@ -18,13 +19,13 @@ function sessionExpired() {
   auth.clear()
   void router.replace({ path: '/login', query: { redirect: destination } })
 }
-onMounted(() => { window.addEventListener('auth-expired', sessionExpired); notifications.startPolling() })
+onMounted(() => { window.addEventListener('auth-expired', sessionExpired); if (!isScreen.value) notifications.startPolling() })
 onUnmounted(() => { window.removeEventListener('auth-expired', sessionExpired); notifications.stopPolling() })
 </script>
 
 <template>
   <div class="app-shell">
-    <header class="topbar">
+    <header v-if="!isScreen" class="topbar">
       <router-link class="brand" :to="auth.user ? '/resources' : '/login'"><span class="brand-mark" aria-hidden="true">校</span><strong>校园资源</strong></router-link>
       <nav v-if="auth.user" class="primary-nav" aria-label="主导航">
         <router-link to="/resources">空间资源</router-link>
@@ -47,7 +48,7 @@ onUnmounted(() => { window.removeEventListener('auth-expired', sessionExpired); 
         <el-button size="small" @click="logout">退出</el-button>
       </div>
     </header>
-    <main><router-view v-if="auth.user || route.path === '/login'" :key="auth.user?.identity_id ?? 'guest'" /></main>
+    <main><router-view v-if="auth.user || route.path === '/login' || isScreen" :key="auth.user?.identity_id ?? 'guest'" /></main>
   </div>
 </template>
 

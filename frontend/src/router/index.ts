@@ -6,6 +6,8 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', component: () => import('../views/LoginView.vue') },
+    { path: '/screen/:roomId', component: () => import('../views/ScreenView.vue') },
+    { path: '/m1/checkin', component: () => import('../views/CheckinLandingView.vue') },
     { path: '/m1/reservations/:id?', component: () => import('../views/SeatReservationsView.vue') },
     { path: '/resources', component: () => import('../views/ResourcesView.vue') },
     { path: '/m2/applications', component: () => import('../views/M2ApplicationsView.vue') },
@@ -22,7 +24,9 @@ export const router = createRouter({
 router.beforeEach(async to => {
   const auth = useAuthStore()
   await auth.restore()
-  if (to.path !== '/login' && !auth.user) return { path: '/login', query: { redirect: to.fullPath } }
+  if (to.path !== '/login' && !to.path.startsWith('/screen/') && !auth.user) {
+    return { path: '/login', query: { redirect: to.fullPath } }
+  }
   if (to.path === '/admin/resources' && !auth.user?.permissions.includes('resources:manage')) return '/resources'
   if (to.path === '/admin/m1' && !auth.user?.permissions.some(permission => ['m1:statistics:read', 'm1:settings:write', 'm1:reservation:read_scoped', 'm1:checkin_code:read'].includes(permission))) return '/resources'
   if (to.path === '/login' && auth.user) return loginDestination(to.query.redirect)
