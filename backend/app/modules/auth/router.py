@@ -35,14 +35,22 @@ def login(body: Login, session: Db, request: Request, response: Response):
         raise DomainError(401, "INVALID_CREDENTIALS", "用户名或密码错误")
     principal = load_principal(session, user.id)
     from app.core.config import get_settings
-    from app.modules.auth.sessions import CSRF_COOKIE, SESSION_COOKIE, issue_session
+    from app.modules.auth.sessions import (
+        CSRF_COOKIE,
+        SESSION_COOKIE,
+        issue_session,
+        session_minutes_for,
+    )
 
-    token, csrf, row = issue_session(session, principal.user_id, principal.identity_id)
+    minutes = session_minutes_for(principal)
+    token, csrf, row = issue_session(
+        session, principal.user_id, principal.identity_id, minutes=minutes
+    )
     config = get_settings()
     options = dict(
         secure=getattr(config, "session_cookie_secure", False),
         samesite=getattr(config, "session_cookie_samesite", "lax"),
-        max_age=config.session_minutes * 60,
+        max_age=minutes * 60,
         path="/",
     )
     response.set_cookie(SESSION_COOKIE, token, httponly=True, **options)
@@ -60,7 +68,7 @@ def users(
     session: Db,
     user: CurrentUser,
     role_code: str | None = Query(
-        default=None, pattern="^(USER|ROOM_ADMIN|PROPERTY_ADMIN|REPAIRER|SYS_ADMIN|DEPT_ADMIN|CAMPUS_ADMIN)$"
+        default=None, pattern="^(USER|ROOM_ADMIN|PROPERTY_ADMIN|REPAIRER|SYS_ADMIN|DEPT_ADMIN|CAMPUS_ADMIN|SCREEN)$"
     ),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),

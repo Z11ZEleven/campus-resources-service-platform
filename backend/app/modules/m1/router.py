@@ -97,6 +97,14 @@ class CheckinInput(BaseModel):
     code: Any = None
 
 
+@router.get("/screen/rooms/{room_id}/code")
+def read_screen_code(
+    room_id: int, request: Request, response: Response, session: Db, actor: CurrentUser
+):
+    response.headers["Cache-Control"] = "no-store"
+    return checkin.screen_code(session, actor, request.state.auth_session.id, room_id)
+
+
 @router.get("/admin/rooms/{room_id}/check-in-code")
 def read_checkin_code(
     room_id: int, request: Request, response: Response, session: Db, actor: CurrentUser

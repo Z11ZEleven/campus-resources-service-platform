@@ -47,6 +47,35 @@ def seed_m2(session, password):
                     )
                 )
         rooms.append(room)
+    screen_room = session.scalar(select(Room).where(Room.code == "B1-101"))
+    if screen_room is not None and session.scalar(
+        select(User.id).where(User.username == "screen_b1_101")
+    ) is None:
+        screen = User(
+            username="screen_b1_101",
+            display_name="B1-101 教室屏幕",
+            password_hash=passwords.hash(password),
+            is_active=True,
+        )
+        session.add(screen)
+        session.flush()
+        session.add(
+            UserIdentity(
+                user_id=screen.id,
+                identity_type="STAFF",
+                identity_no="SCREEN-B1-101",
+                department_code="OPS",
+                is_active=True,
+            )
+        )
+        session.add(
+            UserRole(
+                user_id=screen.id,
+                role_code="SCREEN",
+                scope_type="ROOM",
+                scope_value=str(screen_room.id),
+            )
+        )
     for username, department, role, scopes in (
         ("dept_admin_cs", "CS", "DEPT_ADMIN", [("DEPARTMENT", "CS")]),
         ("dept_admin_ee", "EE", "DEPT_ADMIN", [("DEPARTMENT", "EE")]),
@@ -103,7 +132,8 @@ def main():
     with get_session_factory()() as session, session.begin():
         seed_m2(session, password)
     print(
-        "M2演示数据初始化完成；审批账号：dept_admin_cs、dept_admin_ee、campus_admin、m2_room_admin"
+        "M2演示数据初始化完成；审批账号：dept_admin_cs、dept_admin_ee、campus_admin、m2_room_admin；"
+        "屏幕账号：screen_b1_101"
     )
 
 
