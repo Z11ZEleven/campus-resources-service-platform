@@ -11,6 +11,7 @@
 | M1-001-A/B / T08 提案 | M1 搜索、时段校验及 D 资源可用性判断 | test_m1_search、test_admin_restrictions、test_admin_migration_recovery（真实 MySQL）、test_resource_management | 组内评审及人工验收待完成 |
 | M1-002-A/B/C / T05 数据 | Reservation、Repository、来源/占用、0006 | test_m1_models、test_allocations、test_migrations | T09 已接入创建、本人取消与幂等 HTTP；T11 后续状态及跨模块处理待完成 |
 | M1-003-A/B / T05 数据 | RoomCheckinCode、CheckinAttempt，不保存明文提交编码 | test_m1_models 的唯一性与字段校验 | T10 已实现编码、窗口与限频；团队评审及人工验收待完成 |
+| M1-003 屏幕展示（2026-11-16） | `SCREEN` 角色、`/m1/screen/rooms/{id}/code`、屏幕页与扫码落地页、`0015_screen_role` | `tests/test_m1_screen.py`、前端构建与组件测试 | 真实手机扫码、跨网络与人工验收待完成；设计见 [屏幕签到](screen-design.md) |
 | M1-004-A/B/C/D / T06 | `d_outbox_events`、公共登记/领取/完成/重试/故障查询、独立 Worker、M1 通知/审计适配、0007；站内通知为真实收件箱 | test_outbox、test_migrations、Worker `--once` 冒烟 | T11 定时业务处理、外部邮件/微信、故障管理 HTTP/告警 T16/T17 |
 | M1-005-A/B / T05 数据 | 历史读取 Repository、Violation 与事件结构 | test_m1_models | 本人历史 HTTP 与复用已接入 T09；违约展示 T14 待完成 |
 | M1-006-B | 本轮仅保留需求 | 计划中的后续测试 | 管理参数与统计 T13/T15 |

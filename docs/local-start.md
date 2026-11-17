@@ -76,9 +76,29 @@ SEED_USER_PASSWORD=REPLACE_WITH_LOCAL_DEMO_PASSWORD
 
 无需重新安装依赖。从旧版升级到 M2，或拉取依赖/迁移更新后，再执行一次 `--setup`。
 
+- 教室屏幕（需同一局域网）：`.\start.cmd --lan`，然后用 `http://<局域网IP>:5173/screen/<教室ID>` 打开，账号 `screen_b1_101`
 - 页面：<http://127.0.0.1:5173/m3/work-orders>
 - M2：<http://127.0.0.1:5173/m2/applications>
 - 接口文档：<http://127.0.0.1:8001/docs>
+
+### 固定入口与数据库查看
+
+仓库根目录提供两个快捷脚本：
+
+- `.\urls.cmd`：显示当前 WLAN 地址、所有页面地址和端口状态。
+- `.\urls.cmd -Open screen`：按当前局域网地址打开教室屏幕页。
+- `.\urls.cmd -Open app`：在电脑上打开主应用（localhost:4173）。
+- `.\db-shell.cmd`：进入本地 MySQL 命令行。只建议执行查询，不要手工修改表结构或业务数据。
+
+也可以用图形工具连接数据库：
+
+| 项 | 值 |
+|---|---|
+| 主机 | `127.0.0.1` |
+| 端口 | `3306` |
+| 数据库 | `campus_resources` |
+| 用户 | `campus_app` |
+| 密码 | `.env` 中的 `MYSQL_PASSWORD` |
 - 独立 D 资源服务：<http://127.0.0.1:8002/docs>，服务端接口需要 `RESOURCE_SERVICE_KEY`。
 - 演示账号：`student`、`property_admin`、`repairer`；首次创建时密码取自 `SEED_USER_PASSWORD`。
 
