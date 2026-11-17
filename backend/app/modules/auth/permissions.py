@@ -41,6 +41,7 @@ ROLE_PERMISSIONS = {
     "SYS_ADMIN": frozenset({"users:read", "resources:manage", "auth:manage"}),
     "DEPT_ADMIN": frozenset({"m2:first-approve"}),
     "CAMPUS_ADMIN": frozenset({"m2:first-approve"}),
+    "SCREEN": frozenset({"m1:checkin_code:read"}),
 }
 
 

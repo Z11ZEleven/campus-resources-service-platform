@@ -1,4 +1,4 @@
-"""本地开发启动器；父进程仅使用 Python 3.12 标准库。"""
+"""本地开发启动器；父进程仅使用 Python 3.11 / 3.12 标准库。"""
 
 from __future__ import annotations
 
@@ -98,9 +98,13 @@ def check_venv(python):
     if not python.is_file():
         raise LaunchError("尚未安装后端环境，请先运行 start.cmd --setup。")
     run_step(
-        [python, "-c", "import sys; sys.exit(sys.version_info[:2] != (3, 12))"],
+        [
+            python,
+            "-c",
+            "import sys; sys.exit(sys.version_info[:2] not in {(3, 11), (3, 12)})",
+        ],
         python.parent,
-        "检查虚拟环境 Python 3.12",
+        "检查虚拟环境 Python 3.11/3.12",
         quiet=True,
     )
 
@@ -339,9 +343,10 @@ def wait_http(
     raise LaunchError(f"等待 {url} 超时，请查看上方服务日志。")
 
 
-def serve(root, python, npm, backend_port, frontend_port, resource_port, env):
+def serve(root, python, npm, backend_port, frontend_port, resource_port, env, *, lan=False):
     backend = root / "backend"
     resource_url = f"http://127.0.0.1:{resource_port}"
+    frontend_host = "0.0.0.0" if lan else "127.0.0.1"
     with managed_processes() as processes:
         processes.append(
             start_process(
@@ -397,7 +402,7 @@ def serve(root, python, npm, backend_port, frontend_port, resource_port, env):
                     "dev",
                     "--",
                     "--host",
-                    "127.0.0.1",
+                    frontend_host,
                     "--port",
                     str(frontend_port),
                     "--strictPort",
@@ -412,7 +417,12 @@ def serve(root, python, npm, backend_port, frontend_port, resource_port, env):
             f"M2：http://127.0.0.1:{frontend_port}/m2/applications\n"
             f"接口：http://127.0.0.1:{backend_port}/docs\n"
             f"D 资源服务：{resource_url}/docs\n"
-            "请保持此终端打开；按 Ctrl+C 停止全部三个服务。\n",
+            + (
+                "屏幕端：把 127.0.0.1 换成本机局域网 IP 后访问 /screen/<教室ID>\n"
+                if lan
+                else "屏幕端需要局域网访问时，使用 start.cmd --lan\n"
+            )
+            + "请保持此终端打开；按 Ctrl+C 停止全部三个服务。\n",
             flush=True,
         )
         while True:
@@ -453,12 +463,17 @@ def main(argv=None):
         default=8002,
         help="D 资源服务端口，自动同步 M2 调用地址",
     )
+    parser.add_argument(
+        "--lan",
+        action="store_true",
+        help="前端监听 0.0.0.0，供同一局域网内的手机扫码访问",
+    )
     args = parser.parse_args(argv)
-    if sys.version_info[:2] != (3, 12):
-        raise LaunchError("请使用 Python 3.12 运行启动器。")
+    if sys.version_info[:2] not in {(3, 11), (3, 12)}:
+        raise LaunchError("请使用 Python 3.11 或 3.12 运行启动器。")
     if os.name == "nt" and not sysconfig.get_platform().startswith("win"):
         raise LaunchError(
-            "Windows 请使用原生 Windows Python 3.12，暂不支持 MSYS2 Python。"
+            "Windows 请使用原生 Windows Python 3.11 或 3.12，暂不支持 MSYS2 Python。"
         )
     npm = node_tools()
     if args.setup:
@@ -490,6 +505,7 @@ def main(argv=None):
         args.frontend_port,
         args.resource_port,
         env,
+        lan=args.lan,
     )
 
 

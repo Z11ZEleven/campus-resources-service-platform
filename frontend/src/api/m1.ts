@@ -11,6 +11,14 @@ export interface M1Statistics {
 }
 export interface M1Settings { max_hours: number; version: string }
 export interface CheckinCode { code: string; expires_at: string }
+export interface ScreenCode {
+  room: { id: string; code: string; name: string }
+  code: string
+  business_date: string
+  expires_at: string
+  version: string
+  checkin_path: string
+}
 export async function search(params: Record<string, string | number | boolean>) { return (await request.get<Page<Seat>>('/m1/seats', { params })).data }
 export async function create(body: BookingInput, key: string) { return (await request.post<Reservation>('/m1/reservations', body, { headers: { 'Idempotency-Key': key } })).data }
 export async function reservations(page = 1) { return (await request.get<Page<Reservation>>('/m1/reservations', { params: { page, page_size: 20 } })).data }
@@ -31,4 +39,7 @@ export async function updateSettings(max_hours: number, expected_version: string
 export async function checkinCode(room_id: string, rotate = false) {
   const path = `/m1/admin/rooms/${encodeURIComponent(room_id)}/check-in-code${rotate ? '/rotate' : ''}`
   return (await (rotate ? request.post<CheckinCode>(path) : request.get<CheckinCode>(path))).data
+}
+export async function screenCode(room_id: string) {
+  return (await request.get<ScreenCode>(`/m1/screen/rooms/${encodeURIComponent(room_id)}/code`)).data
 }

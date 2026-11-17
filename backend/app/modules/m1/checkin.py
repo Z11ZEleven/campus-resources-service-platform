@@ -82,6 +82,28 @@ def admin_code(session, actor, auth_id, room_id, rotate=False):
     return {"code": _code(room.id, day, row.nonce), "expires_at": expiry.isoformat()}
 
 
+def screen_code(session, actor, auth_id, room_id):
+    """Read-only payload for a classroom display; no audit write per poll."""
+    room = lock_room(session, room_id)
+    actor = refreshed_actor(session, auth_id, actor)
+    actor.require_for_room("m1:checkin_code:read", room)
+    now = precise_utcnow()
+    day = _date(now)
+    _secret()
+    row = _daily(session, room.id, day)
+    code = _code(room.id, day, row.nonce)
+    expiry = datetime.combine(day + timedelta(days=1), time.min, tzinfo=BUSINESS_TZ)
+    session.flush()
+    return {
+        "room": {"id": str(room.id), "code": room.code, "name": room.name},
+        "code": code,
+        "business_date": day.isoformat(),
+        "expires_at": expiry.isoformat(),
+        "version": str(row.version),
+        "checkin_path": f"/m1/checkin?room={room.id}&code={code}",
+    }
+
+
 def check_in(session, actor, auth_id, reservation_id, submitted, correlation_id):
     row = session.scalar(
         select(Reservation).where(

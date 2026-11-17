@@ -18,7 +18,7 @@ M3 的接口、权限、状态与测试见 [M3 后端接入说明](docs/m3-backe
 
 ### 1. 准备环境并下载代码
 
-先安装 **Git、原生 Windows Python 3.12、Node.js 22.12 或以上版本、MySQL 8.4**，并启动 MySQL 服务。安装完成后重新打开 PowerShell；暂不支持 MSYS2 Python。
+先安装 **Git、原生 Windows Python 3.12（推荐，3.11 也可运行）、Node.js 22.12 或以上版本、MySQL 8.4**，并启动 MySQL 服务。安装完成后重新打开 PowerShell；暂不支持 MSYS2 Python。
 
 在希望存放项目的目录执行：
 
@@ -73,7 +73,7 @@ SEED_USER_PASSWORD=REPLACE_WITH_LOCAL_DEMO_PASSWORD
 如果 `.env` 是自行复制的示例，须另行替换 JWT 密钥占位值，可用以下命令生成随机密钥：
 
 ```powershell
-py -3.12 -c "import secrets; print(secrets.token_urlsafe(48))"
+py -3 -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
 密码仅填写在新设备本地，不要把 `.env` 提交到 Git。新设备使用独立数据库，原设备中的工单和数据不会随代码自动迁移。

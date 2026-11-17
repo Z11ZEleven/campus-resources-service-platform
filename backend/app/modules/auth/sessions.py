@@ -19,15 +19,26 @@ def credential_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def issue_session(session: Session, user_id: int, identity_id: int | None = None):
+def session_minutes_for(principal) -> int:
+    settings = get_settings()
+    if "SCREEN" in principal.roles:
+        return settings.screen_session_minutes
+    return settings.session_minutes
+
+
+def issue_session(
+    session: Session, user_id: int, identity_id: int | None = None, *, minutes: int | None = None
+):
     principal = load_principal(session, user_id, identity_id)
+    if minutes is None:
+        minutes = session_minutes_for(principal)
     token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
     row = AuthSession(
         token_hash=credential_hash(token),
         csrf_hash=credential_hash(csrf),
         user_id=user_id,
         identity_id=principal.identity_id,
-        expires_at=utcnow() + timedelta(minutes=get_settings().session_minutes),
+        expires_at=utcnow() + timedelta(minutes=minutes),
     )
     session.add(row)
     session.flush()

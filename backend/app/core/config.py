@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     jwt_audience: str = "campus-web"
     access_token_minutes: int = Field(default=60, ge=1, le=1440)
     session_minutes: int = Field(default=60, ge=1, le=1440)
+    screen_session_minutes: int = Field(default=43200, ge=1, le=525600)
     session_cookie_secure: bool = False
     session_cookie_samesite: Literal["lax", "strict"] = "lax"
     m1_checkin_secret: SecretStr | None = None

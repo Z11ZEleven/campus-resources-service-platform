@@ -1,6 +1,6 @@
 export function loginDestination(value: unknown): string {
   if (typeof value !== 'string' || value.startsWith('//')) return '/resources'
-  return /^\/(resources|m1\/reservations|admin\/m1|m2\/(?:applications|approval-tasks)|m3\/work-orders|notifications)(?:[/?#]|$)/.test(value) ? value : '/resources'
+  return /^\/(resources|m1\/(?:reservations|checkin)|admin\/m1|m2\/(?:applications|approval-tasks)|m3\/work-orders|notifications)(?:[/?#]|$)/.test(value) ? value : '/resources'
 }
 
 export function notificationDestination(value: unknown): string | null {
